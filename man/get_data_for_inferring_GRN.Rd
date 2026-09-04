@@ -2,67 +2,78 @@
 % Please edit documentation in R/get_data_for_inferring_GRN.R
 \name{get_data_for_inferring_GRN}
 \alias{get_data_for_inferring_GRN}
-\title{Prepare Data for Gene Regulatory Network Inference}
+\title{Prepare Data for GRN Inference}
 \usage{
 get_data_for_inferring_GRN(
-  interest_cell_type_branch_iGRN = interest_cell_type_branch_iGRN,
-  interest_cell_type_group = interest_cell_type_group,
+  interest_cell_type_branch_iGRN,
+  interest_cell_type_group,
   n_part = 1,
   ncores = 1
 )
 }
 \arguments{
-\item{interest_cell_type_branch_iGRN}{The output of function get_branch_iGRN.}
+\item{interest_cell_type_branch_iGRN}{List. Output from \code{\link{get_branch_iGRN}},
+containing branch-specific iGRN matrices (rows: target genes, columns: TFs) for each cell type.}
 
-\item{interest_cell_type_group}{The output of function cell_grouping.}
+\item{interest_cell_type_group}{List. Output from \code{\link{cell_grouping}},
+containing aggregated TFE/TGA/TGE matrices per branch.}
 
-\item{n_part}{Integer. Number of partitions to slice the data for parallel processing. Default is 1 (no partitioning).}
+\item{n_part}{Positive integer. Number of data partitions for parallel feature binding. Defaults to \code{1}.}
 
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A nested list organized by cell type and branch, containing:
+Nested list organized by cell type. Each cell type contains:
 \itemize{
-\item For each branch: A data frame with all potential TF-TG pairs and their features, including:
-\itemize{
-\item \code{TG}: Target gene identifier
-\item \code{TF}: Transcription factor identifier
-\item \code{theta_i}: Regulatory strength from iGRN
-\item \code{TFE_K}, \code{TGA_K}, \code{TGE_K}: Cell group state features for each time point K
-}
-\item A "GRN" element containing the combined dataset across all branches
+\item \code{branch1}, \code{branch2}, ...: Branch-specific data frames, each row corresponds to one TF-TG pair.
+Columns include \code{TG}, \code{TF}, \code{theta_i}, plus time-point features
+\code{TFE_K}, \code{TGA_K}, \code{TGE_K} for each time point K. Pairs with \code{theta_i = 0} are filtered out.
+\item \code{GRN}: Global de-duplicated TF-TG pair data frame across all branches,
+containing only \code{TG}, \code{TF} and \code{theta_i} columns (no time-series features).
+Pairs with \code{theta_i = 0} are filtered out.
 }
 }
 \description{
-Prepares comprehensive datasets for gene regulatory network (GRN) inference by combining iGRN with cell group state features.
-The function generates all possible TF-TG pairs, adds their corresponding regulatory strength values, and integrates cell group state measurements (TFE, TGA, TGE) for each time point.
-Data is processed in parallel for efficiency and can be partitioned to handle large datasets.
+Generates inference-ready datasets by combining branch-level iGRN TF-TG pairs
+with time-series cell state features from cell grouping results. Supports partition-based
+parallel processing for large datasets, and outputs both branch-level full feature sets
+and a global de-duplicated regulatory pair set.
 }
 \details{
-The function performs the following operations:
+The function runs independently for each cell type with the following workflow:
 \enumerate{
-\item For each cell type, processes each branch independently
-\item Generates all possible TF-TG combinations from the iGRN matrix
-\item Extracts regulatory strength (theta_i) for each TF-TG pair
-\item Partitions the data into \code{n_part} subsets for parallel processing
-\item In parallel, adds cell group state features (TFE, TGA, TGE) for each time point
-\item Combines partitioned results and organizes them by branch
-\item Creates a combined dataset across all branches
+\item Generates all TG-TF combinations from each branch's iGRN matrix, and extracts
+the corresponding regulatory strength \code{theta_i} for each pair.
+\item Merges TF-TG pairs across all branches and removes duplicates to form the global GRN set.
+\item Splits each branch's pair set into \code{n_part} partitions, and appends
+time-series cell state features (TFE, TGA, TGE) to each partition in parallel.
+\item Combines processed partitions back into a complete branch-level dataset.
+\item Filters out TF-TG pairs with \code{theta_i} equal to 0 for both branch-level and global datasets.
+\item Returns the nested list with branch-level full feature sets and the global pair set.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Parallel processing significantly speeds up the feature addition step, especially for large datasets
-\item The number of partitions (\code{n_part}) can be adjusted based on dataset size and available memory
-\item The resulting data frame includes all possible TF-TG pairs, which can be large for datasets with many genes
-\item The "GRN" element provides a consolidated view across all branches for comprehensive analysis
+\item The function creates a \code{5 Infer GRN} directory and temporarily switches
+the working directory, restoring the original path on exit.
+\item Partition-based parallelism accelerates feature binding for large pair sets;
+adjust \code{n_part} according to dataset size and available memory.
+\item Output automatically excludes pairs with zero regulatory strength, retaining
+only predicted regulatory relationships.
+\item The \code{GRN} element provides a global, de-duplicated view of all regulatory
+pairs across branches, without time-series features.
+\item Parallel computation relies on \code{parallel::mclapply}; set \code{ncores = 1}
+on Windows systems.
 }
 }
 \examples{
 \dontrun{
 interest_cell_type_branch_iGRN = base::readRDS("./3 get iGRN/interest_cell_type_branch_iGRN.rds")
-interest_cell_type_group = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
+interest_cell_type_group = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+)
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
 n_part = ncores
@@ -72,6 +83,9 @@ interest_cell_type_branch_data_for_GRN_infer = get_data_for_inferring_GRN(
   n_part = n_part,
   ncores = ncores
 )
-base::saveRDS(interest_cell_type_branch_data_for_GRN_infer, file = "./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds")
+base::saveRDS(
+  interest_cell_type_branch_data_for_GRN_infer,
+  file = "./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds"
+)
 }
 }

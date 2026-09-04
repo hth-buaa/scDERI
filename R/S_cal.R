@@ -1,15 +1,25 @@
-#' @title The function S1 or S2 in the evolutionary equations of the paper
+#' @title Calculate S-type Regulatory Rate Correction Term
 #'
-#' @param s Numeric greater than 0. cGenerally range from 0.2 to 5.
-#' @param U Numeric ranging from 0 to 1. An intermediate variable.
-#' @param U_tilde Numeric ranging from 0 to 1. Numeric ranging from 0 to 1.
+#' @description Computes the S-type correction term used in gene expression dynamic equations.
+#' It calculates a nonlinear regulatory rate coefficient based on current and steady-state Hill binding levels.
 #'
-#' @returns Numeric. The computation results of function  S1 or S2.
+#' @param s Positive numeric. Shape parameter controlling the nonlinearity of the S function.
+#' @param U Numeric between 0 and 1. Hill function output at the current time point,
+#'  representing the fractional binding level.
+#' @param U_tilde Numeric between 0 and 1. Steady-state Hill function output,
+#' representing the equilibrium fractional binding level.
+#'
+#' @return Numeric. S-type correction term used to adjust regulatory efficiency in dynamic equations.
+#'
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' print(S_cal(s = s1, U = U1[prev_idx], U_tilde = U1_tilde[prev_idx]))
+#' S_val <- S_cal(
+#'   s = s1,
+#'   U = U_current,
+#'   U_tilde = U_steady
+#' )
 #' }
 S_cal = function(s, U, U_tilde)
 {

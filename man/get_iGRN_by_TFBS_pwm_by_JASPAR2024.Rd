@@ -2,13 +2,12 @@
 % Please edit documentation in R/get_iGRN_by_TFBS_pwm_by_JASPAR2024.R
 \name{get_iGRN_by_TFBS_pwm_by_JASPAR2024}
 \alias{get_iGRN_by_TFBS_pwm_by_JASPAR2024}
-\title{Construct Standard Gene Regulatory Networks (iGRNs) from Transcription Factor Binding Sites (TFBS) Position Weight Matrices PWMs}
+\title{Construct Cell-Type-Specific Initial GRNs (iGRNs) via JASPAR PWM Matching}
 \usage{
 get_iGRN_by_TFBS_pwm_by_JASPAR2024(
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-  promoter_range = 50,
-  results_identify_TGs = results_identify_TGs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
+  interest_cell_type_genes_pseudotime_info,
+  results_identify_TGs,
+  genome = BSgenome.Hsapiens.UCSC.hg38::BSgenome.Hsapiens.UCSC.hg38,
   min_score_for_matchPWM = "80\%",
   species = "Homo sapiens",
   collection = c("CORE", "CNE", "PHYLOFACTS", "SPLICE", "POLII", "FAM", "PBM",
@@ -18,95 +17,95 @@ get_iGRN_by_TFBS_pwm_by_JASPAR2024(
 )
 }
 \arguments{
-\item{interest_cell_type_genes_pseudotime_info}{The output of function get_genes_pseudotime_info}
+\item{interest_cell_type_genes_pseudotime_info}{List. Output from \code{\link{get_genes_pseudotime_info}}, providing the target TF and TG sets.}
 
-\item{promoter_range}{See in ?identify_TGs.}
+\item{results_identify_TGs}{List. Output from \code{\link{identify_TGs}} or \code{\link{filter_peak_annotations}}.
+Must contain a \code{peak_anno_promoter} element with annotation of promoter-associated ATAC peaks.}
 
-\item{results_identify_TGs}{The output of function identify_TGs.}
+\item{genome}{\code{BSgenome} object. Reference genome for sequence extraction.
+Defaults to \code{BSgenome.Hsapiens.UCSC.hg38::BSgenome.Hsapiens.UCSC.hg38}.
+\code{BSgenome.Hsapiens.UCSC.hg19::BSgenome.Hsapiens.UCSC.hg19} and other species-specific BSgenome objects are also supported.}
 
-\item{genome}{A BSgenome object representing the reference genome to use for sequence extraction.
-Default is \code{BSgenome.Hsapiens.UCSC.hg38} (R package BSgenome.Hsapiens.UCSC.hg38 is needed).
-Also \code{BSgenome.Hsapiens.UCSC.hg19} is valid  (R package BSgenome.Hsapiens.UCSC.hg19 is needed).}
+\item{min_score_for_matchPWM}{Character. Minimum score threshold for PWM matching, passed to \code{\link[Biostrings]{matchPWM}}.
+Accepts percentage strings such as \code{"80\%"}. Higher thresholds produce sparser networks with higher specificity.
+Defaults to \code{"80\%"}.}
 
-\item{min_score_for_matchPWM}{Character. Minimum score threshold for PWM matching.
-Can be a percentage string between 0 and 1 (e.g., "80\%"). Default is "80\%".}
+\item{species}{Character. Species name used to query the JASPAR2024 database. Defaults to \code{"Homo sapiens"}. See in \code{\link{get_TFs_from_priors}}.}
 
-\item{species}{See in ?get_TGs_from_JASPAR2024.}
+\item{collection}{Character vector. JASPAR matrix collections to use. Defaults to CORE and multiple additional commonly used collections. See in \code{\link{get_TFs_from_priors}}.}
 
-\item{collection}{See in ?get_TGs_from_JASPAR2024.}
+\item{output_predicted_TFBS}{Logical. Whether to include predicted TFBS sequences in the output CSV.
+Defaults to \code{FALSE}, which exports only gene, TF, max score and peak name, and reduces runtime and output file size.}
 
-\item{output_predicted_TFBS}{Logical. Whether to output detailed TFBS prediction information. Default is FALSE.}
-
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A named list (by cell type) where each element is a matrix (its class is data.frame) representing the TF-TG association network:
+A named list with one element per cell type. Each element is a data frame used as an association matrix:
 \itemize{
-\item Rows: Target genes (TGs)
-\item Columns: Transcription factors (TFs)
-\item Values: Normalized PWM match scores (ranging from 0 to approximately 0.95)
+\item Rows: Target gene symbols
+\item Columns: Transcription factor symbols
+\item Values: Normalized PWM matching scores, ranging from 0 to approximately 0.95
 }
-The matrices are sparse, with most values being 0 indicating no predicted regulatory relationship.
+A value of 0 indicates no significant TF-TG regulatory pair was predicted.
 }
 \description{
-This function constructs standard gene regulatory networks (iGRNs) by predicting transcription factor binding sites (TFBS) using position weight matrices (PWMs) from the JASPAR2024 database.
-It maps transcription factors (TFs) to target genes (TGs) based on PWM matching scores in promoter regions,
-generating TF-TG association matrices for each cell type.
+For each cell type,
+this function scans sequences of promoter-associated accessible peaks with transcription factor binding site position weight matrices from the JASPAR2024 database,
+and constructs an initial gene regulatory network matrix.
+Rows represent target genes, columns represent transcription factors, and values are normalized PWM matching scores.
 }
 \details{
-The function performs the following key operations:
+The function constructs initial GRNs independently for each cell type with the following workflow:
 \enumerate{
-\item Maps TGs to their promoter regions using chromatin accessibility data
-\item Retrieves PWMs for known TFs from JASPAR2024 database
-\item Normalizes PWM matrices to represent base probabilities
-\item Uses parallel processing to match PWMs to promoter sequences in Linux
-\item Constructs TF-TG association matrices based on match scores
-\item Normalized results are divided by 1.05 times the maximum match score to prevent match scores that are too close to 1 from causing instability in subsequent training
+\item \strong{Gene set restriction}: Extracts the union of TFs and TGs across all branches from the pseudotime result to ensure consistency with upstream analysis.
+\item \strong{Promoter peak mapping}: Retrieves genomic coordinates of promoter-associated accessible peaks from the input annotation, and retains only peaks linked to target TGs.
+\item \strong{PWM retrieval and conversion}: Fetches TF PWMs from JASPAR2024 for the specified species and collections, and filters to retain only target TFs.
+Log-odds PWMs are converted to base frequency matrices using the formula \eqn{2^{PWM} / 4}.
+\item \strong{Parallel sequence matching}: Extracts nucleotide sequences of all peaks from the reference genome, and scans each PWM against all peak sequences in parallel.
+The maximum matching score per peak is recorded.
+\item \strong{Score aggregation}: Aggregates peak-level scores to TF-TG pairs by calculating the mean score across all peaks associated with the same gene.
+\item \strong{Score normalization}: Divides all scores by 1.05 times the global maximum score, capping values at approximately 0.95 to avoid numerical saturation in downstream modeling.
+\item \strong{Result export}: Saves per-cell-type matching details (CSV) and intermediate results (RDS) in the \code{3 get iGRN} directory.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item \code{min_score_for_matchPWM} is a critical parameter that affects network sparsity
-\item Only works on Linux systems for parallel processing due to \code{mclapply} limitations
-\item PWM matching is computationally intensive - use parallel processing when possible
-\item The function generates a CSV file with detailed TFBS predictions in the output directory
-\item Normalization (division by 1.05 times max score) ensures values range from 0 to 0.95
-\item Requires BSgenome and JASPAR2024 packages for sequence data and PWMs
+\item The function creates a \code{3 get iGRN} directory and temporarily switches the working directory into it; the original directory is restored on exit.
+\item \code{min_score_for_matchPWM} is the core parameter controlling network sparsity. Adjust it according to the desired balance between specificity and recall.
+\item Only TFs present in both the input gene set and the JASPAR database are retained in the final matrix.
+\item For TF-TG pairs linked to multiple promoter peaks, the final score is the mean of the maximum matching scores of all corresponding peaks.
+\item Parallel computation relies on \code{\link[parallel]{mclapply}}, which is only supported on Linux and macOS.
+\item Required dependencies include \code{JASPAR2024}, \code{TFBSTools}, \code{Biostrings}, a matching \code{BSgenome} package,
+as well as \code{data.table}, \code{dplyr}, \code{tidyr} and \code{tibble}.
 }
 }
-\section{Algorithm Details}{
-
-For each cell type, the function:
-\itemize{
-\item Extracts promoter sequences for all target genes
-\item Matches each TF's PWM against all promoter sequences
-\item Records the maximum match score for each TF-TG pair
-\item Filters TFs to those present in the expression data
-\item Constructs sparse association matrices
-}
-}
-
 \examples{
 \dontrun{
-interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
-promoter_range = 50
-results_identify_TGs = base::readRDS("./1.1 Data Preprocessing - Identify TGs By Annotation/results_identify_TGs.rds")
+interest_cell_type_genes_pseudotime_info = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+)
+results_identify_TGs = base::readRDS(
+  "./1.2 Data Preprocessing - Identify TGs By Annotation/results_identify_TGs.rds"
+)
 library(BSgenome.Hsapiens.UCSC.hg38)
 min_score_for_matchPWM = "80\%"
 ncores = ceiling(parallel::detectCores() / 2) # in Linux
 # ncores = 1 # in Windows
-interest_cell_type_iGRN_all_TGTF_pairs = get_iGRN_by_TFBS_pwm_by_JASPAR2024(
+interest_cell_type_iGRN = get_iGRN_by_TFBS_pwm_by_JASPAR2024(
   interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-  promoter_range = promoter_range,
   results_identify_TGs = results_identify_TGs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   min_score_for_matchPWM = min_score_for_matchPWM,
   species = "Homo sapiens",
-  collection = c("CORE", "CNE", "PHYLOFACTS", "SPLICE", "POLII", "FAM", "PBM", "PBM_HOMEO", "PBM_HLH", "UNVALIDATED"),
+  collection = c(
+    "CORE", "CNE", "PHYLOFACTS", "SPLICE", "POLII", "FAM",
+    "PBM", "PBM_HOMEO", "PBM_HLH", "UNVALIDATED"
+  ),
   output_predicted_TFBS = FALSE,
   ncores = ncores
 )
-base::saveRDS(interest_cell_type_iGRN_all_TGTF_pairs, file = "./3 get iGRN/interest_cell_type_iGRN_all_TGTF_pairs.rds")
+base::saveRDS(interest_cell_type_iGRN, file = "./3 get iGRN/interest_cell_type_iGRN.rds")
 }
 }

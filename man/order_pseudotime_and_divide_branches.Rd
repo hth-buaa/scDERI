@@ -2,61 +2,85 @@
 % Please edit documentation in R/order_pseudotime_and_divide_branches.R
 \name{order_pseudotime_and_divide_branches}
 \alias{order_pseudotime_and_divide_branches}
-\title{Perform Pseudotime Ordering and Branch Partitioning}
+\title{Pseudotime Ordering and Interactive Branch Partitioning for scRNA-seq Data}
 \usage{
 order_pseudotime_and_divide_branches(
-  interest_cell_type_data = interest_cell_type_data
+  interest_cell_type_data,
+  auto_param_selection = TRUE,
+  maxIter = 20,
+  sigma = 0.001,
+  lambda = NULL,
+  ncenter = NULL,
+  param.gamma = 10,
+  tol = 0.001
 )
 }
 \arguments{
-\item{interest_cell_type_data}{The output of function get_interest_cell_type_data.}
+\item{interest_cell_type_data}{List. The output of function \code{\link{get_interest_cell_type_data}},
+containing filtered scRNA-seq objects and gene sets for each cell type.}
+
+\item{auto_param_selection}{Logical. Whether to enable automatic parameter selection for DDRTree. Defaults to \code{TRUE}.
+When \code{TRUE}, trajectory is constructed with default DDRTree parameters.
+When \code{FALSE}, you can manually adjust trajectory topology via parameters below.}
+
+\item{maxIter}{Integer. Maximum iterations for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
+
+\item{sigma}{Numeric. Bandwidth parameter for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
+
+\item{lambda}{Numeric. Regularization parameter for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
+
+\item{ncenter}{Integer. Number of centroids for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
+
+\item{param.gamma}{Numeric. Gamma parameter for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
+
+\item{tol}{Numeric. Convergence tolerance for DDRTree. Only used when \code{auto_param_selection = FALSE}.}
 }
 \value{
-A nested list structure where:
+A nested list structure:
 \itemize{
-\item First level: Named by cell types
-\item Second level: For each cell type, a list of data frames containing:
+\item First level: Named list with cell types as names
+\item Second level: List of branches for each cell type, ordered by user input sequence
+\item Each branch is a data frame with rows as cells, sorted by pseudotime in ascending order, containing two columns:
 \itemize{
-\item \code{Pseudotime}: Pseudotime values for cells in the branch
-\item \code{State}: Cell state assignments for the branch
+\item \code{Pseudotime}: Pseudotime value of each cell
+\item \code{State}: Assigned cell state from trajectory inference
 }
-\item Cells are ordered by pseudotime within each branch
 }
 }
 \description{
-This function performs pseudotime analysis using Monocle2 and enables interactive branch partitioning based on trajectory visualization results.
-It processes scRNA-seq data for multiple cell types to reconstruct developmental trajectories and identify branching points.
+Builds developmental trajectories and performs pseudotime ordering for each cell type using Monocle2 (DDRTree algorithm).
+Supports both automatic and manual parameter tuning for trajectory construction, and divides cells into branches via interactive user input based on visualization results.
 }
 \details{
-The function performs the following steps for each cell type:
+For each cell type, the function executes the following workflow:
 \enumerate{
-\item Converts Seurat object to Monocle CellDataSet
-\item Estimates size factors and dispersions
-\item Performs dimensionality reduction using DDRTree
-\item Orders cells by pseudotime
-\item Generates visualization plots (cell states and pseudotime)
-\item Interactively queries user for branch definitions based on visualizations
-\item Extracts and orders cells for each defined branch
+\item Converts the scRNA-seq count matrix into a Monocle CellDataSet object
+\item Estimates size factors and dispersions for expression normalization
+\item Sets the input gene set (\code{interest_gene_for_GRN}) as features for trajectory inference
+\item Performs dimensionality reduction and trajectory construction via DDRTree (auto or manual parameter mode)
+\item Orders cells along the trajectory to assign pseudotime values
+\item Exports trajectory visualization plots and saves the full CDS object
+\item Accepts interactive user input: number of branches and cell state sequences for each branch
+\item Extracts cells for each defined branch, sorts by pseudotime, and returns the result
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Requires \code{igraph} package version 2.0.3 for compatibility with Monocle
-\item Generates multiple visualization files in the output directory
-\item Creates subdirectories for each cell type's analysis results
-\item The function will pause for user input during execution
-\item Save the returned object as it contains valuable trajectory information
+\item Depends on \code{monocle} and \code{DDRTree} packages. It is recommended to use \code{igraph} version 2.0.3, as higher versions may cause compatibility issues with Monocle.
+\item Creates a top-level directory \code{2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment}, with subdirectories named by cell type.
+Visualization plots and the CDS object are saved in the corresponding subdirectory. Working directory is restored on exit.
+\item If the cell count is too small or the default trajectory topology is not satisfactory, set \code{auto_param_selection = FALSE} and tune DDRTree parameters manually.
+\item This is an interactive function. It will pause for input once per cell type during execution.
 }
 }
 \section{Interactive Input}{
 
-The function requires user interaction to:
+The function pauses for user input per cell type. You need to:
 \itemize{
-\item Specify the number of branches based on visualization results
-\item Define cell state sequences for each branch
+\item Enter the total number of branches (positive integer) based on the generated trajectory plots
+\item Enter cell state IDs (space-separated integers) for each branch in sequence, matching the State labels in the visualization
 }
-Users should examine the generated plots in the output directory before providing input.
+Please check the output images in the cell type subdirectory before entering values.
 }
 
 \examples{
@@ -66,22 +90,48 @@ library(DDRTree)
 packageVersion("igraph")
 remove.packages("igraph")
 install_version("igraph", version = "2.0.3")
-interest_cell_type_data = base::readRDS("./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_data.rds")
+interest_cell_type_data = base::readRDS(paste0(
+  "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+  "/interest_cell_type_data.rds"
+))
 interest_cell_type_Branches = order_pseudotime_and_divide_branches(interest_cell_type_data)
-# Please enter the number of branches based on the pseudotime 2D visualization (e.g., 3) (e.g., 5): 6
-# Interactively input the integer vector of cell state order for each branch (based on visualization results in: 2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/cell_type/).
-# Please enter the integer vector of cell state order for branch 1 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# ...
+# Please enter the number of branches based on the pseudotime 2D visualization:
+#   6
+# ...
+# Please enter the integer vector of cell state order for branch 1 (space-separated):
 #   1 11
-# Please enter the integer vector of cell state order for branch 2 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# Please enter the integer vector of cell state order for branch 2 (space-separated):
 #   1 2 10
-# Please enter the integer vector of cell state order for branch 3 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# Please enter the integer vector of cell state order for branch 3 (space-separated):
 #   1 2 3 9
-# Please enter the integer vector of cell state order for branch 4 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# Please enter the integer vector of cell state order for branch 4 (space-separated):
 #   1 2 3 4 8
-# Please enter the integer vector of cell state order for branch 5 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# Please enter the integer vector of cell state order for branch 5 (space-separated):
 #   1 2 3 4 5 6
-# Please enter the integer vector of cell state order for branch 6 (space-separated) (e.g. 1 2 3 4) (e.g. 1 2 5):
+# Please enter the integer vector of cell state order for branch 6 (space-separated):
 #   1 2 3 4 5 7
-base::saveRDS(interest_cell_type_Branches, file = "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_Branches.rds")
+# ...
+
+interest_cell_type_Branches = order_pseudotime_and_divide_branches(
+   interest_cell_type_data = interest_cell_type_data,
+   auto_param_selection = FALSE,
+   ncenter = 3
+)
+# ...
+# Please enter the number of branches based on the pseudotime 2D visualization:
+#    6
+# ...
+# Please enter the integer vector of cell state order for branch 1 (space-separated):
+#    1
+# ...
+
+base::saveRDS(
+  interest_cell_type_Branches,
+  file = paste0(
+    "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+    "/interest_cell_type_Branches.rds"
+  )
+)
 }
 }

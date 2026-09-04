@@ -11,84 +11,84 @@ f_train_cal_gr(
   ncores = 1,
   params_names = params_names,
   train_data = train_data,
-  tao = tao,
+  tau = tau,
   Tslot_K = Tslot_K,
   params_upper = params_upper,
-  params_lower = params_lower
+  params_lower = params_lower,
+  params_init = params_init
 )
 }
 \arguments{
-\item{params}{See in ?f_train_cal.}
+\item{params}{Numeric vector. Flattened model parameter vector for a single TF-TG pair.
+Order must match \code{params_names}.}
 
-\item{h_max}{Numeric. Maximum step size for finite difference approximation. Default is 0.01.}
+\item{h_max}{Tiny positive numeric. Maximum step size for finite difference approximation. Defaults to 0.01.}
 
-\item{h_min_percent}{Numeric. Minimum step size as a percentage of parameter range (between upper and lower bounds). Default is 0.01 (1\%).}
+\item{h_min_percent}{Tiny positive numeric. Minimum step size as a fraction of parameter range. Defaults to 0.01.}
 
-\item{ncores}{See in ?get_interest_cell_type_data.
-While this code can be executed on Windows systems, it is still strongly recommended to run it on Linux systems, as the execution time without parallel computing would be astronomically long.
-The actual runtime depends on the total available RAM, the number of CPU cores, the previously determined number of cell groups, and the number of transcription factors (TFs) and target genes (TGs) obtained.
-Larger core counts, fewer cell groups, and fewer genes correspond to shorter runtime, while the total available RAM dictates the maximum number of cores that can participate in parallel computing.}
+\item{ncores}{Positive integer. Number of cores for parallel computation of partial derivatives. Defaults to 1.}
 
-\item{params_names}{See in ?f_train_cal.}
+\item{params_names}{Character vector. Names corresponding to each parameter element.}
 
-\item{train_data}{See in ?f_train_cal.}
+\item{train_data}{Data frame. Training data for one regulatory pair,
+containing regulatory strength \code{theta_i} and time-series TFE, TGA, TGE features.}
 
-\item{tao}{See in ?f_train_cal.}
+\item{tau}{Positive numeric. Regulatory binarization threshold.}
 
-\item{Tslot_K}{See in ?f_train_cal.}
+\item{Tslot_K}{Positive numeric vector. Pseudotime interval lengths.}
 
-\item{params_upper}{Numeric vector. Upper bounds for each parameter, used to determine the maximum step size in finite difference approximation.}
+\item{params_upper}{Numeric vector. Upper bounds of parameters for step size calculation.}
 
-\item{params_lower}{Lower bounds for each parameter, used to determine the minimum step size in finite difference approximation.}
+\item{params_lower}{Numeric vector. Lower bounds of parameters for step size calculation.}
+
+\item{params_init}{Numeric vector. Initial parameter values for regularization.}
 }
 \value{
-A numeric vector representing the gradient of the objective function with respect to each parameter.
-Using the finite difference method to approximate the gradient.
+Numeric vector of the same length as \code{params}. Partial derivatives of the objective
+function with respect to each parameter, approximated by forward finite difference.
+NA and infinite values are replaced with 0.
 }
 \description{
-This function computes the numerical gradient of the training objective function using finite difference approximation.
-It employs parallel processing to efficiently calculate partial derivatives with respect to each model parameter,
-supporting gradient-based optimization algorithms for model training.
+Computes the numerical gradient of the scDERI training objective function
+using forward finite difference approximation. Supports parallel computation of partial
+derivatives for each model parameter, serving gradient-based optimization algorithms.
 }
 \details{
-The function implements the following computational strategy:
+The function uses an adaptive step size strategy:
 \enumerate{
-\item Step Size Determination: For each parameter, computes an adaptive step size that is the minimum of \code{h_max} and \code{h_min_percent} of the parameter's range (difference between upper and lower bounds)
-\item Baseline Evaluation: Computes the objective function value at the current parameters
-\item Parallel Gradient Calculation: Uses parallel processing to compute partial derivatives for each parameter by perturbing one parameter at a time
-\item Robustness Handling: Replaces NA or infinite gradient values with 0 for numerical stability
+\item For each parameter, the actual step size is the minimum of \code{h_max}
+and \code{h_min_percent} times the parameter range.
+\item Computes the baseline objective value once and reuses it for all partial derivatives.
+\item Computes each partial derivative independently in parallel via \code{parallel::mclapply}.
+\item Replaces NA and infinite gradient values with 0 for numerical stability.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Depends on \code{scDEDS::f_train_cal} for objective function calculation
-\item Uses forward difference approximation
-\item Parallel processing significantly speeds up computation for high-dimensional parameter spaces
-\item Adaptive step sizing helps balance numerical precision and computational stability
-\item NA and infinite values are replaced with 0, which may mask numerical issues but can ensure smooth program operation
+\item Internally calls \code{\link{f_train_cal}} to compute objective function values.
+\item Forward difference is computationally cheaper but less accurate than central difference.
+\item Parallel computation relies on \code{parallel::mclapply};
+set \code{ncores = 1} on Windows systems.
 }
 }
 \examples{
 \dontrun{
-h_max = 0.01
-h_min_percent = 0.01
-ncores = ceiling(detectCores() / 2) # In Linux.
-# The settings for the other parameters are inside the function scDEDS::gradient_ascent_train.
-temp_grad = f_train_cal_gr(
-  params,
-  h_max = h_max,
-  h_min_percent = h_min_percent,
-  ncores = ncores,
-  params_names = params_names,
+# Compute gradient at given parameter values
+grad <- f_train_cal_gr(
+  params = param_vec,
+  h_max = 0.01,
+  h_min_percent = 0.01,
+  ncores = 1,
+  params_names = param_names,
   train_data = train_data,
-  tao = tao,
+  tau = tau,
   Tslot_K = Tslot_K,
-  params_upper = params_upper,
-  params_lower = params_lower
+  params_upper = param_upper,
+  params_lower = param_lower,
+  params_init = param_init
 )
 }
 }
 \seealso{
-\code{\link{f_train_cal}}, \code{\link[parallel]{mclapply}}
+\code{\link{f_train_cal}}, \code{\link{gradient_ascent_train}}
 }

@@ -2,79 +2,216 @@
 % Please edit documentation in R/get_genes_pseudotime_info.R
 \name{get_genes_pseudotime_info}
 \alias{get_genes_pseudotime_info}
-\title{Extract Gene Expression and Activity Profiles Along Pseudotime}
+\title{Extract Pseudotemporal Gene Expression and Activity Profiles along Pseudotime}
 \usage{
 get_genes_pseudotime_info(
-  interest_cell_type_Branches = interest_cell_type_Branches,
-  interest_cell_type_data = interest_cell_type_data,
-  alpha_gene = 0.7,
-  alpha_cell = 0.9,
-  ncores = 1
+  interest_cell_type_Branches,
+  interest_cell_type_data,
+  alpha_TF = 0.63,
+  alpha_TG = 0.69,
+  alpha_cell = 0.99,
+  w_TFNER = 0.69,
+  w_TFNERR = 1,
+  w_TFNEA = 0.67,
+  w_TFNEAR = 0,
+  w_TFNAR = 0.11,
+  w_TFNARR = 0.07,
+  w_TFNAA = 0.56,
+  w_TFNAAR = 0.12,
+  w_TGNER = 0.3,
+  w_TGNERR = 0.88,
+  w_TGNEA = 0.23,
+  w_TGNEAR = 0.12,
+  w_TGNAR = 0.48,
+  w_TGNARR = 0.83,
+  w_TGNAA = 0.36,
+  w_TGNAAR = 0.07,
+  ncores = 1,
+  sparsity_cut = NULL
 )
 }
 \arguments{
-\item{interest_cell_type_Branches}{The output of function order_pseudotime_and_divide_branches.}
+\item{interest_cell_type_Branches}{List. Output from \code{\link{order_pseudotime_and_divide_branches}}.}
 
-\item{interest_cell_type_data}{The output of function get_interest_cell_type_data}
+\item{interest_cell_type_data}{List. Output from \code{\link{get_interest_cell_type_data}}.}
 
-\item{alpha_gene}{Numeric (0-1). Threshold for gene filtering based on zero-expression rate.
-Genes with zero-expression rate higher than this value will be removed. Default is 0.7.}
+\item{alpha_TF}{Numeric (0–1), default 0.63. Quantile threshold for TF filtering.
+TFs with importance score above this quantile are retained.}
 
-\item{alpha_cell}{Numeric (0-1). Threshold for cell filtering based on zero-expression rate.
-Cells with zero-expression rate higher than this value will be removed. Default is 0.9.}
+\item{alpha_TG}{Numeric (0–1), default 0.69. Quantile threshold for TG filtering.
+TGs with importance score above this quantile are retained.}
 
-\item{ncores}{See ?get_interest_cell_type_data.}
+\item{alpha_cell}{Numeric (0–1), default 1 (no filtering). Zero-rate threshold for cell filtering.
+Cells with zero-expression rate \strong{in both RNA and ATAC} below or equal to this value are retained.}
+
+\item{w_TFNER}{Numeric (-0.2 to 1). Weight for TF Non-Zero Expression Ratio in TFIS (TF importance score) calculation.}
+
+\item{w_TFNERR}{Numeric (-0.2 to 1). Weight for TF Non-zero Expression Ratio normalized Rank (max corresponds to 1, min to 0) in TFIS calculation.}
+
+\item{w_TFNEA}{Numeric (-0.2 to 1). Weight for TF normalized (divided by max) Non-zero Expression Average in TFIS calculation.}
+
+\item{w_TFNEAR}{Numeric (-0.2 to 1). Weight for TF normalized (divided by max) Non-zero Expression Average Rank (max corresponds to 1, min to 0) in TFIS calculation.}
+
+\item{w_TFNAR}{Numeric (-0.2 to 1). Weight for TF Non-Zero Activity Ratio in TFIS calculation.}
+
+\item{w_TFNARR}{Numeric (-0.2 to 1). Weight for TF Non-zero Activity Ratio normalized Rank (max corresponds to 1, min to 0) in TFIS calculation.}
+
+\item{w_TFNAA}{Numeric (-0.2 to 1). Weight for TF normalized (divided by max) Non-zero Activity Average in TFIS calculation.}
+
+\item{w_TFNAAR}{Numeric (-0.2 to 1). Weight for TF normalized (divided by max) Non-zero Activity Average Rank (max corresponds to 1, min to 0) in TFIS calculation.}
+
+\item{w_TGNER}{Numeric (-0.2 to 1). Weight for TG Non-Zero Expression Ratio in TGIS (TG importance score) calculation.}
+
+\item{w_TGNERR}{Numeric (-0.2 to 1). Weight for TG Non-zero Expression Ratio normalized Rank (max corresponds to 1, min to 0) in TGIS calculation.}
+
+\item{w_TGNEA}{Numeric (-0.2 to 1). Weight for TG normalized (divided by max) Non-zero Expression Average in TGIS calculation.}
+
+\item{w_TGNEAR}{Numeric (-0.2 to 1). Weight for TG normalized (divided by max) Non-zero Expression Average Rank (max corresponds to 1, min to 0) in TGIS calculation.}
+
+\item{w_TGNAR}{Numeric (-0.2 to 1). Weight for TG Non-Zero Activity Ratio in TGIS calculation.}
+
+\item{w_TGNARR}{Numeric (-0.2 to 1). Weight for TG Non-zero Activity Ratio normalized Rank (max corresponds to 1, min to 0) in TGIS calculation.}
+
+\item{w_TGNAA}{Numeric (-0.2 to 1). Weight for TG normalized (divided by max) Non-zero Activity Average in TGIS calculation.}
+
+\item{w_TGNAAR}{Numeric (-0.2 to 1). Weight for TG normalized (divided by max) Non-zero Activity Average Rank (max corresponds to 1, min to 0) in TGIS calculation.}
+
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
+
+\item{sparsity_cut}{Nested list or \code{NULL} (default). Optional post-filtering by non-zero rate.
+Top-level names must match cell types; each element is a data frame with rows \code{TFE, TGA, TGE}
+and columns \code{branch1, branch2, ...}. Values must be between 0 and 1.
+Invalid format is silently reset to \code{NULL} with a message.
+Re-filters genes based on sparsity thresholds after the initial filtering step using a series of alpha cutoffs.}
 }
 \value{
-A nested list structure organized by cell type, where for each cell type contains:
+A nested list named by cell type. Each entry contains:
 \itemize{
-\item \code{Branches_TFE}: List of data frames containing temporal expression vectors for TFs in each branch
-\item \code{Branches_TGA}: List of data frames containing temporal activity vectors for TGs in each branch
-\item \code{Branches_TGE}: List of data frames containing temporal expression vectors for TGs in each branch
-\item \code{Branches_n_cell}: List of cell counts for each branch
-\item \code{Branches}: Original branch information with pseudotime mapping
-\item \code{Branches_TFs}: List of TF names present in each branch
-\item \code{Branches_TGs}: List of TG names present in each branch
+\item \code{Branches_TFE}: List of data frames. Rows = TFs, columns = cells ordered by pseudotime, values = normalized expression.
+\item \code{Branches_TGA}: List of data frames. Rows = TGs, columns = cells ordered by pseudotime, values = normalized chromatin activity.
+\item \code{Branches_TGE}: List of data frames. Rows = TGs, columns = cells ordered by pseudotime, values = normalized expression.
+\item \code{Branches_n_cell}: List of integers. Number of retained cells per branch.
+\item \code{Branches}: List of data frames. Original branch annotation added with cell-pseudotime index mapping.
+\item \code{Branches_TFs}: List of character vectors. Retained TF names per branch.
+\item \code{Branches_TGs}: List of character vectors. Retained TG names per branch.
 }
-All vectors are ordered by pseudotime indices within each branch.
 }
 \description{
-This function processes single-cell multi-omics data to extract temporal expression and activity profiles for transcription factors (TFs) and target genes (TGs) along developmental trajectories.
-It performs rigorous quality filtering, maps cells to pseudotime indices, normalizes data, and returns organized temporal profiles for downstream GRN inference.
+For each cell type and pseudotime branch, this function calculates gene importance scores,
+filters genes and cells, then extracts pseudotime-series matrices of transcription factor (TF) expression,
+target gene (TG) expression and chromatin activity, ready for downstream GRN inference.
 }
 \details{
-The function performs the following processing steps for each cell type and branch:
+For each cell type and branch, the workflow proceeds as follows:
 \enumerate{
-\item Applies iterative quality filtering based on zero-expression rates
-\item Maps cells to pseudotime indices (k~ values) for temporal ordering
-\item Normalizes both expression and activity matrices using Seurat's methods
-\item Extracts and orders temporal profiles for TFs and TGs
-\item Returns organized data structures ready for dynamic GRN inference
+\item Extract scRNA-seq and scATAC-seq count matrices for cells in the current branch.
+\item Compute 8 features for TFs and TGs separately: non-zero ratio and max-normalized mean of non-zero values,
+for both expression and activity, plus rank-normalized versions of all four metrics.
+\item Calculate weighted importance scores TFIS and TGIS using the input weight parameters.
+\item Filter genes by score quantiles (\code{alpha_TF}, \code{alpha_TG});
+filter cells by zero-expression rate in both omics layers (\code{alpha_cell}).
+\item Map cells to integer pseudotime indices and sort cells in ascending pseudotime order.
+\item Normalize RNA and ATAC matrices with \code{\link[Seurat]{NormalizeData}}.
+\item Extract and organize TFE, TGA, TGE temporal matrices.
+\item Optionally apply \code{sparsity_cut} for per-matrix non-zero rate post-filtering,
+and sync gene lists across matrices.
+\item Return the structured nested list.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Alpha parameters are hyperparameters that significantly affect results
-\item Output vectors are ordered by pseudotime, enabling time-series analysis
-\item Uses parallel processing in Linux for efficient handling of multiple cell types
+\item Alpha thresholds and feature weights are core hyperparameters that directly affect the number of retained genes and cells.
+\item Parallel computing via \code{\link[parallel]{mclapply}} only works on Unix-like systems; ncores is forced to 1 on Windows.
+\item The function creates a \code{2.2 Data Processing - Cell Grouping} directory and temporarily switches the working directory,
+which is restored on exit.
+\item Check gene non-zero rates after running: excessively sparse matrices may degrade downstream cell grouping performance.
+To reduce sparsity, increase weights for non-zero ratio features, or raise alpha thresholds to keep fewer high-quality genes.
+\item When \code{sparsity_cut} is applied, TGA and TGE matrices are intersected to keep consistent TG sets.
 }
 }
 \examples{
 \dontrun{
-interest_cell_type_Branches = base::readRDS("./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_Branches.rds")
-interest_cell_type_data = base::readRDS("./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_data.rds")
-alpha_gene = 0.7
-alpha_cell = 0.9
+interest_cell_type_Branches = base::readRDS(base::paste0(
+  "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+  "/interest_cell_type_Branches.rds"
+))
+interest_cell_type_data = base::readRDS(base::paste0(
+  "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+  "/interest_cell_type_data.rds"
+))
+alpha_TF = 0.7; alpha_TG = 0.7; alpha_cell = 0.9
+w_TFNER = 1; w_TFNERR = 0.6; w_TFNEA = 0.8; w_TFNEAR = 0.4
+w_TFNAR = 0.9; w_TFNARR = 0.5; w_TFNAA = 0.7; w_TFNAAR = 0.3
+w_TGNER = 0.3; w_TGNERR = 0.1; w_TGNEA = 0.3; w_TGNEAR = 0.1
+w_TGNAR = 1; w_TGNARR = 1; w_TGNAA = 0.3; w_TGNAAR = 0.1
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
+
+# Example 1: without sparsity_cut
 interest_cell_type_genes_pseudotime_info = get_genes_pseudotime_info(
   interest_cell_type_Branches = interest_cell_type_Branches,
   interest_cell_type_data = interest_cell_type_data,
-  alpha_gene = alpha_gene,
-  alpha_cell = alpha_cell,
+  alpha_TF = alpha_TF, alpha_TG = alpha_TG, alpha_cell = alpha_cell,
+  w_TFNER = w_TFNER, w_TFNERR = w_TFNERR, w_TFNEA = w_TFNEA, w_TFNEAR = w_TFNEAR,
+  w_TFNAR = w_TFNAR, w_TFNARR = w_TFNARR, w_TFNAA = w_TFNAA, w_TFNAAR = w_TFNAAR,
+  w_TGNER = w_TGNER, w_TGNERR = w_TGNERR, w_TGNEA = w_TGNEA, w_TGNEAR = w_TGNEAR,
+  w_TGNAR = w_TGNAR, w_TGNARR = w_TGNARR, w_TGNAA = w_TGNAA, w_TGNAAR = w_TGNAAR,
   ncores = ncores
 )
-base::saveRDS(interest_cell_type_genes_pseudotime_info, file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
+
+# Example 2: with sparsity_cut (one cell type, one branch)
+sparsity_cut = list(
+  cell_name1 = data.frame(
+    branch1 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    branch2 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    branch3 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    row.names = c("TFE", "TGA", "TGE")
+  ),
+  cell_name2 = data.frame(
+    branch1 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    branch2 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    branch3 = c(TFE = 0.00, TGA = 0.00, TGE = 0.03),
+    row.names = c("TFE", "TGA", "TGE")
+  ),
+)
+interest_cell_type_genes_pseudotime_info = get_genes_pseudotime_info(
+  interest_cell_type_Branches = interest_cell_type_Branches,
+  interest_cell_type_data = interest_cell_type_data,
+  alpha_TF = alpha_TF, alpha_TG = alpha_TG, alpha_cell = alpha_cell,
+  w_TFNER = w_TFNER, w_TFNERR = w_TFNERR, w_TFNEA = w_TFNEA, w_TFNEAR = w_TFNEAR,
+  w_TFNAR = w_TFNAR, w_TFNARR = w_TFNARR, w_TFNAA = w_TFNAA, w_TFNAAR = w_TFNAAR,
+  w_TGNER = w_TGNER, w_TGNERR = w_TGNERR, w_TGNEA = w_TGNEA, w_TGNEAR = w_TGNEAR,
+  w_TGNAR = w_TGNAR, w_TGNARR = w_TGNARR, w_TGNAA = w_TGNAA, w_TGNAAR = w_TGNAAR,
+  ncores = ncores,
+  sparsity_cut = sparsity_cut
+)
+# or rely solely on sparsity_cut:
+interest_cell_type_genes_pseudotime_info = get_genes_pseudotime_info(
+  interest_cell_type_Branches = interest_cell_type_Branches,
+  interest_cell_type_data = interest_cell_type_data,
+  alpha_TF = , alpha_TG = 0, alpha_cell = 1,
+  ncores = ncores,
+  sparsity_cut = sparsity_cut
+)
+
+# Check minimum nonzero frequency
+min_nonzero_freq = 1.0
+for (i in seq_along(interest_cell_type_genes_pseudotime_info)) {
+  for (j in 1:3) {
+    for (k in seq_along(interest_cell_type_genes_pseudotime_info[[i]][[j]])) {
+      df = interest_cell_type_genes_pseudotime_info[[i]][[j]][[k]]
+      nonzero_freq = rowSums(df != 0) / ncol(df)
+      min_nonzero_freq = min(min_nonzero_freq, nonzero_freq)
+    }
+  }
 }
+cat("min_nonzero_freq: ", min_nonzero_freq, "\n"); rm(min_nonzero_freq, df, nonzero_freq)
+base::saveRDS(
+  interest_cell_type_genes_pseudotime_info,
+  file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+)
+}
+
 }

@@ -1,51 +1,51 @@
-#' @title Extract and Process Data for Specific Cell Types
+#' @title Process Cell-Type-Specific Single-Cell Multi-Omics Data
 #'
 #' @description
-#' This function processes single-cell multi-omics data for specified cell types by performing rigorous quality control,
-#' filtering genes and cells based on expression thresholds,
-#' and ensuring consistency between RNA expression and chromatin accessibility data.
+#' Extracts scRNA-seq and scATAC-seq data for specified cell types,
+#' performs quality control by filtering genes and cells based on zero-expression rates,
+#' and aligns the two omics datasets to ensure full consistency.
+#' The output is formatted for downstream GRN construction and pseudotime analysis.
 #'
-#' @param alpha_gene
-#' Numeric (0-1). Threshold for gene filtering preliminary based on zero-expression rate.
-#' Genes with zero-expression rate higher than this value will be removed. Default is 0.99.
-#' It's not recommended to reset. Using default settings is advised.
-#' @param alpha_cell Threshold for cell filtering preliminary based on zero-expression rate.
-#' Cells with zero-expression rate higher than this value will be removed. Default is 0.99.
-#' It's not recommended to reset. Using default settings is advised.
-#' @param interest_cell_type Character vector. Names of cell types to extract and process (in meta.data of Seurat object).
-#' @param Basic_Info The output of function get_expression_and_activity_matrix
-#' @param ncores
-#' Integer. Number of cores for parallel processing. Default is 1.
-#' Recommended to run this function in Linux for parallel computing capability.
-#' If running on Windows, ncores must be set to 1.
+#' @param alpha_gene Numeric value between 0 and 1. Zero-expression rate threshold for gene filtering.
+#'   Genes with a zero-expression proportion higher than this threshold will be removed.
+#'   Defaults to \code{1} (no extra filtering beyond all-zero gene removal).
+#' @param alpha_cell Numeric value between 0 and 1. Zero-expression rate threshold for cell filtering.
+#'   Cells with a zero-expression proportion higher than this threshold will be removed.
+#'   Defaults to \code{1} (no extra filtering beyond all-zero cell removal).
+#' @param interest_cell_type Character vector. Target cell type names to extract.
+#'   Must match values in the \code{seurat_annotations} metadata column of the input Seurat objects.
+#' @param Basic_Info List. Output from the \code{\link{get_expression_and_activity_matrix}} function,
+#'   which must contain \code{scRNAseq_for_GRN}, \code{scATACseq_for_GRN}, \code{gene_for_GRN},
+#'   \code{TGs} and \code{TFs} elements.
+#' @param ncores Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+#'   Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+#'   set to \code{1} when running on Windows.
 #'
-#' @returns
-#' A named list (names correspond to cell types) where each element contains:
-#' \itemize{
-#' \item \code{interest_scRNAseq_for_GRN}: Filtered scRNA-seq data for the cell type
-#' \item \code{interest_scATACseq_for_GRN}: Filtered scATAC-seq data for the cell type
-#' \item \code{interest_gene_for_GRN}: Filtered gene vector for GRN construction
-#' \item \code{interest_TGs}: Filtered target genes present in the cell type
-#' \item \code{interest_TFs}: Filtered transcription factors present in the cell type
-#' }
+#' @return A named list with one entry per input cell type (named by cell type).
+#'   Each entry contains:
+#'   \itemize{
+#'     \item \code{interest_scRNAseq_for_GRN}: Filtered scRNA-seq Seurat object
+#'     \item \code{interest_scATACseq_for_GRN}: Filtered scATAC-seq Seurat object, with genes and cells fully aligned to the scRNA-seq data
+#'     \item \code{interest_gene_for_GRN}: Gene set for GRN construction (union of filtered transcription factors and target genes)
+#'     \item \code{interest_TGs}: Filtered target genes retained in the current cell type
+#'     \item \code{interest_TFs}: Filtered transcription factors retained in the current cell type
+#'   }
 #'
 #' @details
-#' The function performs the following operations for each specified cell type:
+#' For each specified cell type, the function executes the following workflow:
 #' \enumerate{
-#' \item Extracts expression matrix and removes genes/cells with all zero counts
-#' \item Applies stringent filtering based on zero-expression rates using alpha thresholds
-#' \item Extracts and aligns activity matrix with the filtered RNA-seq data
-#' \item Ensures consistency between RNA and ATAC datasets
-#' \item Returns processed data ready for downstream pseudotime and GRN analysis
+#'   \item Subsets the scRNA-seq object by target cell type, and removes genes and cells with all-zero counts
+#'   \item Further filters genes and cells using the \code{alpha_gene} and \code{alpha_cell} zero-expression rate thresholds
+#'   \item Subsets the scATAC-seq object by the same cell type, and aligns its gene and cell dimensions to the filtered scRNA-seq data
+#'   \item Intersects the input gene sets (full gene list, TFs, TGs) with retained genes in the scRNA-seq data, and defines the final gene set as the union of filtered TFs and TGs
+#'   \item Trims both omics datasets to the final gene set, verifies complete consistency of row and column names, and returns the processed data
 #' }
 #'
 #' @note
-#' Important considerations:
 #' \itemize{
-#' \item Requires that scATACseq_for_GRN contains a "seurat_annotations" metadata column (displays cell labels)
-#' \item Temporarily changes working directory but restores upon completion
-#' \item Uses parallel processing (Linux) for efficiency with multiple cell types
-#' \item Alpha parameters are critical hyperparameters that may need tuning
+#'   \item Both \code{scRNAseq_for_GRN} and \code{scATACseq_for_GRN} must contain a \code{seurat_annotations} metadata column for cell type annotation.
+#'   \item This function creates a subdirectory named \code{2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment} in the current working directory, temporarily switches the working directory into it, and restores the original directory on exit.
+#'   \item Parallel computation relies on \code{\link[parallel]{mclapply}}, which does not support multicore on Windows.
 #' }
 #'
 #' @export
@@ -54,7 +54,9 @@
 #' \dontrun{
 #' interest_cell_type = c("CD4 TEM", "cDc")
 #' # interest_cell_type = "Treg"
-#' Basic_Info = base::readRDS("./1.3 Data Preprocessing - Get Expression And Activity Matrix/Basic_Info.rds")
+#' Basic_Info = base::readRDS(
+#'   "./1.3 Data Preprocessing - Get Expression And Activity Matrix/Basic_Info.rds"
+#' )
 #' ncores = parallel::detectCores() - 1 # in Linux
 #' # ncores = 1 # in Windows
 #' interest_cell_type_data = get_interest_cell_type_data(
@@ -62,31 +64,44 @@
 #'   Basic_Info = Basic_Info,
 #'   ncores = ncores
 #' )
-#' base::saveRDS(interest_cell_type_data, file = "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_data.rds")
+#' base::saveRDS(
+#'   interest_cell_type_data,
+#'   file = paste0(
+#'     "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+#'     "/interest_cell_type_data.rds"
+#'   )
+#' )
 #' }
 get_interest_cell_type_data = function(
-    alpha_gene = 0.99,
-    alpha_cell = 0.99,
+    alpha_gene = 1,
+    alpha_cell = 1,
     interest_cell_type = interest_cell_type,
     Basic_Info = Basic_Info,
     ncores = 1
 )
 {
   ### Start.
+  if (!all(interest_cell_type %in% Basic_Info$scRNAseq_for_GRN$seurat_annotations)) {
+    base::stop("Some cell types in interest_cell_type are not found in seurat_annotations.")
+  }
+  if (alpha_gene < 0 || alpha_gene > 1 || alpha_cell < 0 || alpha_cell > 1) {
+    base::stop("alpha_gene and alpha_cell must be between 0 and 1.")
+  }
+
   t_start = base::Sys.time()
-  message("Run: Extracting Data for Cell Types of Interest ", t_start, ".")
+  message("Run: Extracting Data for Cell Types of Interest. Time: ", t_start, ".")
   original_dir = base::getwd()
   new_folder = "2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment"
   if (!base::dir.exists(new_folder)) {
     base::dir.create(new_folder, recursive = TRUE)
-    message("Folder already creates: ", new_folder, ".")
+    message("Folder created: ", new_folder, ".")
   } else {message("Folder already exists: ", new_folder, ".")}
   base::setwd(new_folder)
   message("The current working directory has been switched to: ", base::getwd(), ".")
 
   ### Inner function.
-  get_interest_cell_type_data_process = function(alpha_gene = 0.99,
-                                                 alpha_cell = 0.99,
+  get_interest_cell_type_data_process = function(alpha_gene = 1,
+                                                 alpha_cell = 1,
                                                  cell_type, scRNAseq_for_GRN, scATACseq_for_GRN, gene_for_GRN, TGs, TFs)
   {
     message("The cell label is ", cell_type, ".")
@@ -94,48 +109,48 @@ get_interest_cell_type_data = function(
     # Extracting expression matrix for cell types of interest (retaining genes/cells with non-zero expression values).
     message("Extracting expression matrix for cell types of interest (retaining genes/cells with non-zero expression values).")
     interest_scRNAseq_for_GRN = base::subset(scRNAseq_for_GRN, subset = seurat_annotations == cell_type)
-    for (t in 1:3) {
-      interest_scRNAseq_for_GRN =
-        interest_scRNAseq_for_GRN[base::rowSums(base::as.matrix(interest_scRNAseq_for_GRN@assays$RNA$counts)) > 0, ]
-      interest_scRNAseq_for_GRN =
-        interest_scRNAseq_for_GRN[, base::colSums(base::as.matrix(interest_scRNAseq_for_GRN@assays$RNA$counts)) > 0]
-    }
+    counts_mat <- SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts")
+    interest_scRNAseq_for_GRN = interest_scRNAseq_for_GRN[Matrix::rowSums(counts_mat) > 0, ]
+    counts_mat <- SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts")
+    interest_scRNAseq_for_GRN = interest_scRNAseq_for_GRN[, Matrix::colSums(counts_mat) > 0]
 
-    # Retaining genes with missing value rate less than alpha_gene and cells with missing value rate less than alpha_cell.
-    message("Retaining genes with missing value rate less than ", alpha_gene, " and cells with missing value rate less than ", alpha_cell, ".")
-    # library(Matrix)
-    for (t in 1:3) {
-      zero_frequency =
-        base::rowMeans(base::as.data.frame(base::as.matrix(SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts"))) == 0)
-      interest_scRNAseq_for_GRN =
-        base::subset(interest_scRNAseq_for_GRN, features = base::names(zero_frequency[zero_frequency <= alpha_gene]))
+    # Retaining genes with zero-expression rate <= alpha_gene and cells with zero-expression rate alpha_cell.
+    message("Retaining genes with zero-expression rate <= ", alpha_gene,
+            " and cells with zero-expression rate <= ", alpha_cell, ".")
+    zero_frequency =
+      base::rowMeans(base::as.data.frame(base::as.matrix(SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts"))) == 0)
+    interest_scRNAseq_for_GRN =
+      base::subset(interest_scRNAseq_for_GRN, features = base::names(zero_frequency[zero_frequency <= alpha_gene]))
 
-      zero_frequency =
-        base::colMeans(base::as.data.frame(base::as.matrix(SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts"))) == 0)
-      interest_scRNAseq_for_GRN =
-        base::subset(interest_scRNAseq_for_GRN, cells = base::names(zero_frequency[zero_frequency <= alpha_cell]))
-    }
+    zero_frequency =
+      base::colMeans(base::as.data.frame(base::as.matrix(SeuratObject::GetAssayData(interest_scRNAseq_for_GRN, layer = "counts"))) == 0)
+    interest_scRNAseq_for_GRN =
+      base::subset(interest_scRNAseq_for_GRN, cells = base::names(zero_frequency[zero_frequency <= alpha_cell]))
 
-    # Extracting activity matrix for cell types of interest (retaining genes/cells with non-zero activity values).
-    message("Extracting activity matrix for Cell types of interest (retaining genes/cells with non-zero activity values).")
+    # Extracting and aligning activity matrix to match the filtered expression matrix dimensions.
+    message("Extracting and aligning activity matrix to match the filtered expression matrix dimensions.")
     interest_scATACseq_for_GRN = base::subset(scATACseq_for_GRN, subset = seurat_annotations == cell_type)
     interest_scATACseq_for_GRN =
       interest_scATACseq_for_GRN[base::rownames(interest_scRNAseq_for_GRN), base::colnames(interest_scRNAseq_for_GRN)]
 
-    # Update data.
-    message("Update data.")
+    # Finalizing gene sets and ensuring consistency between RNA and ATAC data.
+    message("Finalizing gene sets and ensuring consistency between RNA and ATAC data.")
     interest_gene_for_GRN = base::intersect(gene_for_GRN, base::rownames(interest_scRNAseq_for_GRN))
-    interest_TGs = base::intersect(TGs, interest_gene_for_GRN)
-    interest_TFs = base::intersect(TFs, interest_gene_for_GRN)
-    interest_gene_for_GRN = base::union(interest_TGs, interest_TFs)
+    interest_TGs = base::sort(base::intersect(TGs, interest_gene_for_GRN))
+    interest_TFs = base::sort(base::intersect(TFs, interest_gene_for_GRN))
+    interest_gene_for_GRN = base::sort(base::union(interest_TGs, interest_TFs))
     interest_scRNAseq_for_GRN =
-      interest_scRNAseq_for_GRN[base::intersect(base::rownames(interest_scRNAseq_for_GRN), interest_gene_for_GRN), ]
-    interest_scATACseq_for_GRN = interest_scATACseq_for_GRN[base::rownames(interest_scRNAseq_for_GRN), ]
+      interest_scRNAseq_for_GRN[base::sort(base::intersect(base::rownames(interest_scRNAseq_for_GRN), interest_gene_for_GRN)), ]
+    interest_scATACseq_for_GRN = interest_scATACseq_for_GRN[base::rownames(interest_scRNAseq_for_GRN), base::colnames(interest_scRNAseq_for_GRN)]
 
     base::stopifnot(base::identical(
       base::rownames(interest_scRNAseq_for_GRN),
       base::rownames(interest_scATACseq_for_GRN)
     ))
+    base::stopifnot(
+      base::identical(base::sort(base::rownames(interest_scRNAseq_for_GRN)), base::sort(base::rownames(interest_scATACseq_for_GRN))),
+      base::identical(base::sort(base::colnames(interest_scRNAseq_for_GRN)), base::sort(base::colnames(interest_scATACseq_for_GRN)))
+    )
 
     # End.
     return(base::list("interest_scRNAseq_for_GRN" = interest_scRNAseq_for_GRN,
@@ -165,8 +180,7 @@ get_interest_cell_type_data = function(
   base::setwd(original_dir)
   message("The current working directory has been switched to: ", base::getwd())
   t_end = base::Sys.time()
-  message("Finish: Extracting Data for Cell Types of Interest ", t_end)
-  message("Running time: ")
-  base::print(t_end - t_start)
+  message("Finish: Extracting Data for Cell Types of Interest. Time: ", t_end)
+  message("Running time: ", base::format(t_end - t_start))
   return(interest_cell_type_data)
 }

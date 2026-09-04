@@ -2,10 +2,10 @@
 % Please edit documentation in R/filter_GRN.R
 \name{filter_GRN}
 \alias{filter_GRN}
-\title{Filter Gene Regulatory Network Predictions}
+\title{Filter GRN Results with Dual Stringency Levels}
 \usage{
 filter_GRN(
-  interest_cell_type_pGRN = interest_cell_type_pGRN,
+  interest_cell_type_pGRN,
   fit_loss_quantile_threshold = 0.2,
   theta_p_quantile_threshold = 0.8,
   fit_loss_upper = 0.2,
@@ -13,47 +13,46 @@ filter_GRN(
 )
 }
 \arguments{
-\item{interest_cell_type_pGRN}{The output of function select_best_prediction.}
+\item{interest_cell_type_pGRN}{List. Output from \code{\link{select_best_prediction}}.}
 
-\item{fit_loss_quantile_threshold}{See in ?select_best_prediction.}
+\item{fit_loss_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for fitting loss. The final cutoff is the minimum of this quantile and \code{fit_loss_upper}. Lower values mean stricter filtering. Defaults to 0.2.}
 
-\item{theta_p_quantile_threshold}{See in ?select_best_prediction.}
+\item{theta_p_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for predicted regulatory strength. The final cutoff is the maximum of this quantile and \code{theta_p_lower}. Higher values mean stricter filtering. Defaults to 0.8.}
 
-\item{fit_loss_upper}{See in ?select_best_prediction.}
+\item{fit_loss_upper}{Non-negative numeric. Absolute upper bound of acceptable fitting loss, serving as a safety cutoff to avoid overly lenient thresholds. Defaults to 0.2.}
 
-\item{theta_p_lower}{See in ?select_best_prediction.}
+\item{theta_p_lower}{Non-negative numeric. Absolute lower bound of acceptable regulatory strength, serving as a safety cutoff to avoid overly lenient thresholds. Defaults to 0.2.}
 }
 \value{
-The input list \code{interest_cell_type_pGRN} with two additional elements for each cell type:
+The input nested list \code{interest_cell_type_pGRN} with two additional data frames per cell type:
 \itemize{
-\item \code{pred_summary_loose}: Data frame with regulatory interactions that pass the loose filtering criteria
-\item \code{pred_summary_strict}: Data frame with regulatory interactions that pass the strict filtering criteria (no missing values)
+\item \code{pred_summary_loose}: Interactions passing the dual-threshold filtering (loss below cutoff and strength above cutoff).
+\item \code{pred_summary_strict}: High-confidence subset of the loose set, with all rows containing missing values removed.
 }
 }
 \description{
-Applies quality thresholds to filter predicted gene regulatory networks (GRN) at two stringency levels: loose and strict.
-The function uses quantile-based thresholds and absolute bounds to select high-confidence regulatory interactions based on fitting loss and predicted regulatory strength (theta_p).
-Results are organized by cell type and saved in separate data frames for each filtering level.
+Filters inferred gene regulatory network results at two stringency levels using dual thresholds combining quantile statistics and absolute bounds.
+It retains high-confidence regulatory interactions based on fitting loss and predicted regulatory strength, and outputs both loose and strict filtered sets.
 }
 \details{
-The filtering process applies the following criteria to the \code{pred_summary} data frame for each cell type:
+The function performs filtering independently on the \code{pred_summary} data frame of each cell type:
 \enumerate{
-\item \strong{Loose Filtering}: Selects interactions where:
+\item \strong{Loose filtering}: Retains interactions satisfying both conditions with strict inequality:
 \itemize{
-\item Fitting loss is less than the minimum of \code{fit_loss_upper} and the specified quantile threshold
-\item Predicted regulatory strength is greater than the maximum of \code{theta_p_lower} and the specified quantile threshold
+\item Fitting loss is lower than the minimum of \code{fit_loss_upper} and the corresponding quantile value.
+\item Predicted regulatory strength is higher than the maximum of \code{theta_p_lower} and the corresponding quantile value.
 }
-\item \strong{Strict Filtering}: Applies the same criteria as loose filtering, then removes all rows with any missing values
+\item \strong{Strict filtering}: Derived from the loose set by removing all rows with any missing values, yielding a complete-case high-confidence interaction set.
 }
-The function operates independently on each cell type's prediction summary.
+The dual-threshold design balances adaptability to different data distributions and guaranteed minimum quality standards.
 }
 \note{
-Important considerations:
 \itemize{
-\item The loose filtering provides a balance between sensitivity and specificity
-\item The strict filtering yields high-confidence interactions but may be overly conservative
-\item Adjust quantile thresholds to control the stringency of filtering
-\item The function modifies the input list by adding new elements; original data is preserved
+\item The function creates and temporarily switches to the \code{5 Infer GRN} directory, and restores the original working directory on exit.
+\item The loose set balances sensitivity and specificity, suitable for exploratory analysis and global network construction.
+\item The strict set provides conservative high-confidence interactions, recommended for functional validation and core regulatory network analysis.
+\item You can adjust filtering stringency via quantile parameters: lower \code{fit_loss_quantile_threshold} or higher \code{theta_p_quantile_threshold} increases stringency.
+\item The function appends new elements to the input list; the original \code{pred_summary} data remains fully preserved.
 }
 }
 \examples{

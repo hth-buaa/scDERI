@@ -1,29 +1,31 @@
-Package: scDEDS
-Title: scDEDS: Pseudotemporal Discrete Evolution Dynamics for GRN Inference from Paired Single-Cell Multi-Omics Data
-Version: 2.0
+Package: scDERI
+Title: A Discrete Dynamical Model for Activating Enhancer-Driven Gene Regulatory Network Inference from Single-Cell Matched Multi-Omics Data
+Version: 1.0
 Authors@R: 
     person(given = "Taihang", family = "Huang", email = "huangtaihang@buaa.edu.cn", role = c("aut", "cre"))
-Description: Implements the scDEDS algorithm, a novel method for predicting Gene Regulatory Networks (GRNs) by modeling their discrete evolutionary dynamics along a pseudotemporal trajectory. It is specifically designed for paired single-cell RNA-seq and ATAC-seq data, leveraging the complementary information to infer dynamic regulatory interactions. This package provides a comprehensive toolkit for reconstructing developmental or disease progression pathways from multi-omics snapshots.
+Description: Implements the scDERI algorithm, a novel method for predicting Enhancer Gene Regulatory Networks (eGRNs) by modeling their discrete evolutionary dynamics along a pseudotemporal trajectory. It is specifically designed for cell-matched single-cell RNA-seq and ATAC-seq data, leveraging the complementary information to infer dynamic regulatory interactions. This package provides a comprehensive toolkit for reconstructing developmental or disease progression pathways from multi-omics snapshots.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
-    GenomeInfoDb,
-    dplyr,
-    ggplot2,
-    TFBSTools,
-    JASPAR2024,
-    IRanges,
-    ChIPseeker,
+    Seurat,
     Signac,
-    SeuratObject,
-    EnsDb.Hsapiens.v86,
+    monocle,
+    ChIPseeker,
+    JASPAR2024,
+    TFBSTools,
+    GenomeInfoDb,
+    IRanges,
     Biobase,
     BiocGenerics,
+    dplyr,
+    org.Hs.eg.db,
+    Matrix
+Suggests:
+    ggplot2,
+    SeuratObject,
     methods,
-    monocle,
-    Seurat,
     VGAM,
     ggrepel,
     minpack.lm,
@@ -34,6 +36,10 @@ Imports:
     GA,
     stats,
     stringr,
-    clusterProfiler,
-    org.Hs.eg.db
-    
+    TxDb.Hsapiens.UCSC.hg38.knownGene,
+    TxDb.Hsapiens.UCSC.hg19.knownGene,
+    EnsDb.Hsapiens.v86,
+    EnsDb.Hsapiens.v75,
+    BSgenome.Hsapiens.UCSC.hg38,
+    BSgenome.Hsapiens.UCSC.hg19,
+    clusterProfiler

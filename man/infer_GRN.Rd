@@ -2,15 +2,13 @@
 % Please edit documentation in R/infer_GRN.R
 \name{infer_GRN}
 \alias{infer_GRN}
-\title{Infer Gene Regulatory Networks Using Trained Models}
+\title{Infer Gene Regulatory Networks with Trained Models}
 \usage{
 infer_GRN(
-  interest_cell_type_branch_data_for_GRN_infer =
-    interest_cell_type_branch_data_for_GRN_infer,
-  interest_cell_type_tao = interest_cell_type_tao,
-  interest_cell_type_branch_model_train = interest_cell_type_branch_model_train,
-  interest_cell_type_group = interest_cell_type_group,
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
+  interest_cell_type_branch_data_for_GRN_infer,
+  interest_cell_type_tau,
+  interest_cell_type_branch_model_train,
+  interest_cell_type_group,
   select_cell_type = NULL,
   select_branch = NULL,
   each = 1e+06,
@@ -18,71 +16,66 @@ infer_GRN(
 )
 }
 \arguments{
-\item{interest_cell_type_branch_data_for_GRN_infer}{The output of function get_data_for_inferring_GRN.}
+\item{interest_cell_type_branch_data_for_GRN_infer}{List. Output from \code{\link{get_data_for_inferring_GRN}}, containing branch-level TF-TG pairs with time-series expression features.}
 
-\item{interest_cell_type_tao}{The output of function get_cell_type_tao.}
+\item{interest_cell_type_tau}{Named numeric vector. Output from \code{\link{get_cell_type_tau}}, cell-type-specific binarization thresholds.}
 
-\item{interest_cell_type_branch_model_train}{The output of function model_train.}
+\item{interest_cell_type_branch_model_train}{Nested list. Output from \code{\link{model_train}}, containing trained model parameters for each branch.}
 
-\item{interest_cell_type_group}{The output of function cell_grouping.}
+\item{interest_cell_type_group}{List. Output from \code{\link{cell_grouping}}, containing pseudotime interval lengths for each branch.}
 
-\item{interest_cell_type_genes_pseudotime_info}{The output of function get_genes_pseudotime_info.}
+\item{select_cell_type}{Character vector or \code{NULL}.
+Cell types to process. \code{NULL} means processing all cell types. Defaults to \code{NULL}.}
 
-\item{select_cell_type}{Character vector or NULL. Specific cell types to process. If NULL, processes all cell types. Default is NULL.}
+\item{select_branch}{Numeric vector or \code{NULL}. Branch indices to process. \code{NULL} means processing all branches. Defaults to \code{NULL}.}
 
-\item{select_branch}{Numeric vector or NULL. Specific branches to process. If NULL, processes all branches. Default is NULL.}
+\item{each}{Positive integer. Maximum number of regulatory pairs per parallel chunk. Adjust to control peak memory usage. Defaults to 1000000.}
 
-\item{each}{Integer. Maximum number of regulatory interactions to process in each parallel chunk. Default is 1,000,000.}
-
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A nested list named \code{interest_cell_type_pGRN} organized by cell type and branch, containing:
+A nested list named \code{interest_cell_type_pGRN}, organized by cell type and branch. Each branch contains two data frames:
 \itemize{
-\item For each branch: Two data frames:
-\itemize{
-\item \code{theta_p}: Predicted regulatory strengths for all TF-TG pairs (rows) using each trained model (columns)
-\item \code{loss}: Fitting losses corresponding to each prediction
+\item \code{theta_p}: Rows are candidate TF-TG pairs to predict, columns are trained models. Values are optimized regulatory strengths.
+\item \code{loss}: Rows and columns correspond to \code{theta_p}. Values are the minimum prediction loss corresponding to the optimal theta.
 }
-}
-Additionally, saves each branch's results as an RDS file in the directory "./5 Infer GRN/".
+Each branch's result is also saved as a separate RDS file in the \code{5 Infer GRN} directory.
 }
 \description{
-Infers gene regulatory networks (GRN) by applying trained models to predict regulatory strengths for all potential TF-TG interactions.
-The function processes data in parallel, calculates predicted regulatory strengths (theta_p) and fitting losses, and organizes results by cell type and branch.
-It supports selective processing of specific cell types and branches for targeted analysis.
+Predicts optimal regulatory strengths and corresponding prediction losses for all candidate TF-TG pairs using pre-trained scDERI models.
+Supports subset processing by cell type and branch, chunk-based parallel computation, and automatic saving of branch-level results.
 }
 \details{
-The inference process follows these steps:
+The inference workflow for each selected branch is as follows:
 \enumerate{
-\item \strong{Data Preparation}: Selects target cell types/branches
-\item \strong{Parallel Processing}: Partitions data into chunks of size \code{each} for efficient parallel computation
-\item \strong{Model Application}: For each TF-TG pair, applies all trained models to predict regulatory strength:
-\itemize{
-\item Uses optimized parameters from training
-\item Predicts theta_p by minimizing the prediction error
-}
-\item \strong{Result Aggregation}: Combines results from parallel chunks and saves as RDS files
-\item \strong{Output Organization}: Returns structured list of predictions and losses
+\item Splits all candidate TF-TG pairs into multiple chunks according to the \code{each} parameter.
+\item Processes chunks in parallel: for each candidate pair, iterates over all trained models and uses Brent's method to find the theta value (within 0.01–0.99) that minimizes prediction loss.
+\item Merges results from all chunks to form branch-level theta_p and loss matrices.
+\item Automatically saves the branch-level result as an RDS file to the \code{5 Infer GRN} directory.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Processing time scales with the number of TF-TG pairs and trained models
-\item The \code{each} parameter controls memory usage; reduce if encountering memory issues
-\item Results are automatically saved as RDS files for persistence
-\item Use \code{select_cell_type} and \code{select_branch} for targeted analysis
-\item Parallel processing significantly accelerates computation for large datasets
+\item The function creates and temporarily switches to the \code{5 Infer GRN} directory, and restores the original working directory on exit.
+\item The \code{each} parameter controls peak memory usage. Reduce its value if you encounter out-of-memory errors.
+\item Use \code{select_cell_type} and \code{select_branch} to process data in batches, which is suitable for large datasets and supports interrupted recovery.
+\item Parallel computation relies on \code{parallel::mclapply}. Set \code{ncores = 1} on Windows systems.
 }
 }
 \examples{
 \dontrun{
-interest_cell_type_branch_data_for_GRN_infer = base::readRDS("./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds")
-interest_cell_type_tao = base::readRDS("./3 get iGRN/interest_cell_type_tao.rds")
-interest_cell_type_branch_model_train = base::readRDS("./4.2 BUild Prediction Model/interest_cell_type_branch_model_train.rds")
-interest_cell_type_group = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
-interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
+interest_cell_type_branch_data_for_GRN_infer = base::readRDS(
+  "./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds"
+)
+interest_cell_type_tau = base::readRDS("./3 get iGRN/interest_cell_type_tau.rds")
+interest_cell_type_branch_model_train = base::readRDS(
+  "./4.2 Build Prediction Model/interest_cell_type_branch_model_train.rds"
+)
+interest_cell_type_group = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+)
 each = 1000
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
@@ -90,10 +83,9 @@ ncores = parallel::detectCores() - 1 # in Linux
 # way 1: one step (If the running memory is sufficient)
 interest_cell_type_pGRN = infer_GRN(
   interest_cell_type_branch_data_for_GRN_infer = interest_cell_type_branch_data_for_GRN_infer,
-  interest_cell_type_tao = interest_cell_type_tao,
+  interest_cell_type_tau = interest_cell_type_tau,
   interest_cell_type_branch_model_train = interest_cell_type_branch_model_train,
   interest_cell_type_group = interest_cell_type_group,
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
   select_cell_type = NULL,
   select_branch = NULL,
   each = each,
@@ -102,7 +94,9 @@ interest_cell_type_pGRN = infer_GRN(
 base::saveRDS(interest_cell_type_pGRN, file = "./5 Infer GRN/interest_cell_type_pGRN.rds")
 
 # way 2: more steps but stable
-# If the process is terminated due to memory issues, you can manually continue running it branch by branch (saving the results to interest_cell_type_pGRN).
+# If the process is terminated due to memory issues,
+# you can manually continue running it branch by branch
+# (saving the results to interest_cell_type_pGRN).
 interest_cell_type_pGRN = base::list()
 for (cell_type in base::names(interest_cell_type_branch_data_for_GRN_infer)) {
   message("Infer cell type ", cell_type, ".")
@@ -111,10 +105,9 @@ for (cell_type in base::names(interest_cell_type_branch_data_for_GRN_infer)) {
     message("Infer cell type ", cell_type, " branch ", n, ".")
     interest_cell_type_pGRN[[cell_type]][[base::paste0("branch", n)]] = infer_GRN(
       interest_cell_type_branch_data_for_GRN_infer = interest_cell_type_branch_data_for_GRN_infer,
-      interest_cell_type_tao = interest_cell_type_tao,
+      interest_cell_type_tau = interest_cell_type_tau,
       interest_cell_type_branch_model_train = interest_cell_type_branch_model_train,
       interest_cell_type_group = interest_cell_type_group,
-      interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
       select_cell_type = cell_type,
       select_branch = n,
       each = each,
@@ -124,7 +117,4 @@ for (cell_type in base::names(interest_cell_type_branch_data_for_GRN_infer)) {
 }
 base::saveRDS(interest_cell_type_pGRN, file = "./5 Infer GRN/interest_cell_type_pGRN.rds")
 }
-}
-\seealso{
-\code{\link[scDEDS]{R_cal}}, \code{\link[scDEDS]{Hill_cal}}, \code{\link[scDEDS]{S_cal}}
 }

@@ -2,80 +2,72 @@
 % Please edit documentation in R/cell_grouping.R
 \name{cell_grouping}
 \alias{cell_grouping}
-\title{Cell grouping based on pseudotime and gene expression/activity}
+\title{Adaptive Cell Grouping Along Pseudotime Trajectories}
 \usage{
 cell_grouping(
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-  points_x_for_fitting_nc_and_nmin = points_x_for_fitting_nc_and_nmin,
+  interest_cell_type_genes_pseudotime_info,
+  points_x_for_fitting_nc_and_nmin,
   points_y_for_fitting_nc_and_nmin = c(5, 10, 15),
   ncores = 1
 )
 }
 \arguments{
-\item{interest_cell_type_genes_pseudotime_info}{The output of function get_genes_pseudotime_info.}
+\item{interest_cell_type_genes_pseudotime_info}{List. Output from \code{\link{get_genes_pseudotime_info}}.}
 
-\item{points_x_for_fitting_nc_and_nmin}{A numeric vector of length 3 requiring all positive integers in strictly increasing order.
-X-coordinates (cell counts) for fitting the logarithmic model that determines minimum cells per group.
-If points_y_for_fitting_nc_and_nminforms an arithmetic sequence, it is recommended that twice the median value of points_x_for_fitting_nc_and_nmin is less than the sum of its first and last values.}
+\item{points_x_for_fitting_nc_and_nmin}{Integer vector of length 3, strictly increasing positive values.
+Total cell counts (x-axis) for fitting the minimum-cells-per-group logarithmic model.}
 
-\item{points_y_for_fitting_nc_and_nmin}{A numeric vector of length 3 requiring all positive integers in strictly increasing order.
-Y-coordinates (group counts) for fitting the logarithmic model that determines minimum cells per group.}
+\item{points_y_for_fitting_nc_and_nmin}{Integer vector of length 3, strictly increasing positive values.
+Corresponding minimum cells per group (y-axis) for the logarithmic model. Defaults to \code{c(5, 10, 15)}.}
 
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A nested list structure organized by cell type, where for each cell type contains:
+Nested list named by cell type, each entry contains:
 \itemize{
-\item \code{Branches_n_group}: Number of groups in each branch
-\item \code{Branches_n_k}: Number of cells in each group for each branch
-\item \code{n_min}: Minimum cell threshold used for each branch
-\item \code{Branches_T_k}: Pseudotime values for each group
-\item \code{Branches_Tslot_k}: Time interval lengths for each group
-\item \code{Branches_TFE_T}: Aggregated TF expression values for each group
-\item \code{Branches_TGA_T}: Aggregated TG activity values for each group
-\item \code{Branches_TGE_T}: Aggregated TG expression values for each group
+\item \code{Branches_n_group}: Integer vector. Number of valid groups per branch; returns 0 if grouping fails.
+\item \code{Branches_n_k}: List of integer vectors. Exact cell count of each group per branch.
+\item \code{n_min}: Numeric vector. Fitted minimum cell threshold per branch.
+\item \code{Branches_T_k}: List of numeric vectors. Pseudotime value at the endpoint of each group.
+\item \code{Branches_Tslot_k}: List of numeric vectors. Length of pseudotime interval for each group.
+\item \code{Branches_TFE_T}: List of data frames. Aggregated mean of non-zero expression values for TFs (genes as rows, groups as columns).
+\item \code{Branches_TGA_T}: List of data frames. Aggregated mean of non-zero activity values for TGs.
+\item \code{Branches_TGE_T}: List of data frames. Aggregated mean of non-zero expression values for TGs.
 }
 }
 \description{
-This function performs cell grouping along pseudotime trajectories based on gene expression and activity profiles.
-It implements an adaptive grouping algorithm that ensures each group contains sufficient cells with non-zero expression/activity values for reliable downstream analysis.
-The function uses a logarithmic fitting model to determine optimal group sizes and produces aggregated expression values for each cell group.
+Performs adaptive cell grouping along pseudotime trajectories for each cell type.
+It first fits a logarithmic model to determine the minimum cells per group based on total cell count,
+then iteratively adjusts group sizes to ensure all genes have sufficient non-zero expression/activity values in each group.
+Returns aggregated gene profiles and pseudotime endpoints for downstream dynamic modeling.
 }
 \details{
-The function performs the following key operations:
+For each cell type and branch, the workflow executes as follows:
 \enumerate{
-\item Validates input parameters to ensure proper model fitting
-\item Fits a logarithmic model (y = c*ln(ax+b)) to determine optimal group sizes based on cell counts
-\item Implements an adaptive cell grouping algorithm that ensures each group meets minimum non-zero value requirements
-\item Calculates pseudotime values and time intervals for each cell group
-\item Aggregates gene expression and activity values within each group
-\item Returns organized data structures for downstream differential equation analysis
+\item Validates input fitting points to ensure they are strictly increasing positive integers.
+\item Fits a logarithmic model \eqn{y = c \cdot \ln(ax + b)} via the three given points, where x = total cells in the branch and y = minimum cells per group. The fitted value is rounded up to obtain \code{n_min}.
+\item Runs adaptive grouping on pseudotime-ordered cells: each group starts with \code{n_min} cells; if any gene in TFE, TGA, or TGE matrix has fewer than \code{n_min} non-zero values, one cell is added incrementally until the constraint is met or remaining cells are exhausted.
+\item Handles edge cases: remaining cells fewer than \code{n_min} are merged into the previous group; if the first group cannot satisfy the constraint, grouping fails and returns 0 groups.
+\item Calculates endpoint pseudotime and interval length for each group.
+\item Computes mean of non-zero expression/activity values per gene per group, and returns aggregated matrices.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item The logarithmic fitting parameters are critical hyperparameters that significantly affect grouping results
-\item The function validates that input points form a strictly increasing sequence of positive integers
-\item Grouping ensures each gene has sufficient non-zero values in each group for reliable analysis
-\item The algorithm handles various edge cases including insufficient cells for grouping
+\item The three fitting points directly determine \code{n_min} and thus the number of groups. Lower \code{n_min} produces more groups but increases sparsity risk.
+\item If grouping returns 0 groups or fewer groups than expected, you can lower the y values of fitting points to reduce \code{n_min}, or tune upstream parameters in \code{\link{get_genes_pseudotime_info}} to reduce gene sparsity.
+\item For reliable downstream modeling, 8–15 groups per branch is recommended. Too few groups reduce temporal resolution; too many groups weaken statistical power per group.
+\item The function creates a \code{2.2 Data Processing - Cell Grouping} directory, temporarily switches the working directory, and saves logarithmic model fitting plots per cell type.
+\item Parallel computation relies on \code{\link[parallel]{mclapply}} and is not supported on Windows.
 }
 }
-\section{Algorithm Details}{
-
-The grouping algorithm follows these steps for each branch:
-\itemize{
-\item Calculate minimum cell threshold using the fitted logarithmic model
-\item Iteratively assign cells to groups while ensuring sufficient non-zero values
-\item Handle edge cases where remaining cells are insufficient for new groups
-\item Calculate mean expression/activity values for each gene in each group
-\item Assign pseudotime values and time intervals to each group
-}
-}
-
 \examples{
 \dontrun{
-interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
+interest_cell_type_genes_pseudotime_info = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+)
 points_x_for_fitting_nc_and_nmin = c(280, 450, 650)
 points_y_for_fitting_nc_and_nmin = c(5, 10, 15)
 ncores = parallel::detectCores() - 1 # In Linux.
@@ -86,6 +78,9 @@ interest_cell_type_group = cell_grouping(
   points_y_for_fitting_nc_and_nmin = points_y_for_fitting_nc_and_nmin,
   ncores = ncores
 )
-base::saveRDS(interest_cell_type_group, file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
+base::saveRDS(
+  interest_cell_type_group,
+  file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+)
 }
 }

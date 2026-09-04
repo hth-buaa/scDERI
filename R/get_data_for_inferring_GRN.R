@@ -1,47 +1,56 @@
-#' @title Prepare Data for Gene Regulatory Network Inference
+#' @title Prepare Data for GRN Inference
 #'
 #' @description
-#' Prepares comprehensive datasets for gene regulatory network (GRN) inference by combining iGRN with cell group state features.
-#' The function generates all possible TF-TG pairs, adds their corresponding regulatory strength values, and integrates cell group state measurements (TFE, TGA, TGE) for each time point.
-#' Data is processed in parallel for efficiency and can be partitioned to handle large datasets.
+#' Generates inference-ready datasets by combining branch-level iGRN TF-TG pairs
+#' with time-series cell state features from cell grouping results. Supports partition-based
+#' parallel processing for large datasets, and outputs both branch-level full feature sets
+#' and a global de-duplicated regulatory pair set.
 #'
-#' @param interest_cell_type_branch_iGRN The output of function get_branch_iGRN.
-#' @param interest_cell_type_group The output of function cell_grouping.
-#' @param n_part Integer. Number of partitions to slice the data for parallel processing. Default is 1 (no partitioning).
-#' @param ncores See in ?get_interest_cell_type_data.
+#' @param interest_cell_type_branch_iGRN List. Output from \code{\link{get_branch_iGRN}},
+#'   containing branch-specific iGRN matrices (rows: target genes, columns: TFs) for each cell type.
+#' @param interest_cell_type_group List. Output from \code{\link{cell_grouping}},
+#'   containing aggregated TFE/TGA/TGE matrices per branch.
+#' @param n_part Positive integer. Number of data partitions for parallel feature binding. Defaults to \code{1}.
+#' @param ncores Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+#'   Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+#'   set to \code{1} when running on Windows.
 #'
-#' @returns
-#' A nested list organized by cell type and branch, containing:
+#' @return
+#' Nested list organized by cell type. Each cell type contains:
 #' \itemize{
-#' \item For each branch: A data frame with all potential TF-TG pairs and their features, including:
-#' \itemize{
-#' \item \code{TG}: Target gene identifier
-#' \item \code{TF}: Transcription factor identifier
-#' \item \code{theta_i}: Regulatory strength from iGRN
-#' \item \code{TFE_K}, \code{TGA_K}, \code{TGE_K}: Cell group state features for each time point K
-#' }
-#' \item A "GRN" element containing the combined dataset across all branches
+#'   \item \code{branch1}, \code{branch2}, ...: Branch-specific data frames, each row corresponds to one TF-TG pair.
+#'     Columns include \code{TG}, \code{TF}, \code{theta_i}, plus time-point features
+#'     \code{TFE_K}, \code{TGA_K}, \code{TGE_K} for each time point K. Pairs with \code{theta_i = 0} are filtered out.
+#'   \item \code{GRN}: Global de-duplicated TF-TG pair data frame across all branches,
+#'     containing only \code{TG}, \code{TF} and \code{theta_i} columns (no time-series features).
+#'     Pairs with \code{theta_i = 0} are filtered out.
 #' }
 #'
 #' @details
-#' The function performs the following operations:
+#' The function runs independently for each cell type with the following workflow:
 #' \enumerate{
-#' \item For each cell type, processes each branch independently
-#' \item Generates all possible TF-TG combinations from the iGRN matrix
-#' \item Extracts regulatory strength (theta_i) for each TF-TG pair
-#' \item Partitions the data into \code{n_part} subsets for parallel processing
-#' \item In parallel, adds cell group state features (TFE, TGA, TGE) for each time point
-#' \item Combines partitioned results and organizes them by branch
-#' \item Creates a combined dataset across all branches
+#'   \item Generates all TG-TF combinations from each branch's iGRN matrix, and extracts
+#'     the corresponding regulatory strength \code{theta_i} for each pair.
+#'   \item Merges TF-TG pairs across all branches and removes duplicates to form the global GRN set.
+#'   \item Splits each branch's pair set into \code{n_part} partitions, and appends
+#'     time-series cell state features (TFE, TGA, TGE) to each partition in parallel.
+#'   \item Combines processed partitions back into a complete branch-level dataset.
+#'   \item Filters out TF-TG pairs with \code{theta_i} equal to 0 for both branch-level and global datasets.
+#'   \item Returns the nested list with branch-level full feature sets and the global pair set.
 #' }
 #'
 #' @note
-#' Important considerations:
 #' \itemize{
-#' \item Parallel processing significantly speeds up the feature addition step, especially for large datasets
-#' \item The number of partitions (\code{n_part}) can be adjusted based on dataset size and available memory
-#' \item The resulting data frame includes all possible TF-TG pairs, which can be large for datasets with many genes
-#' \item The "GRN" element provides a consolidated view across all branches for comprehensive analysis
+#'   \item The function creates a \code{5 Infer GRN} directory and temporarily switches
+#'     the working directory, restoring the original path on exit.
+#'   \item Partition-based parallelism accelerates feature binding for large pair sets;
+#'     adjust \code{n_part} according to dataset size and available memory.
+#'   \item Output automatically excludes pairs with zero regulatory strength, retaining
+#'     only predicted regulatory relationships.
+#'   \item The \code{GRN} element provides a global, de-duplicated view of all regulatory
+#'     pairs across branches, without time-series features.
+#'   \item Parallel computation relies on \code{parallel::mclapply}; set \code{ncores = 1}
+#'     on Windows systems.
 #' }
 #'
 #' @export
@@ -49,7 +58,9 @@
 #' @examples
 #' \dontrun{
 #' interest_cell_type_branch_iGRN = base::readRDS("./3 get iGRN/interest_cell_type_branch_iGRN.rds")
-#' interest_cell_type_group = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
+#' interest_cell_type_group = base::readRDS(
+#'   "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+#' )
 #' ncores = parallel::detectCores() - 1 # in Linux
 #' # ncores = 1 # in Windows
 #' n_part = ncores
@@ -59,35 +70,41 @@
 #'   n_part = n_part,
 #'   ncores = ncores
 #' )
-#' base::saveRDS(interest_cell_type_branch_data_for_GRN_infer, file = "./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds")
+#' base::saveRDS(
+#'   interest_cell_type_branch_data_for_GRN_infer,
+#'   file = "./5 Infer GRN/interest_cell_type_branch_data_for_GRN_infer.rds"
+#' )
 #' }
 get_data_for_inferring_GRN = function(
-    interest_cell_type_branch_iGRN = interest_cell_type_branch_iGRN,
-    interest_cell_type_group = interest_cell_type_group,
+    interest_cell_type_branch_iGRN,
+    interest_cell_type_group,
     n_part = 1,
     ncores = 1
 )
 {
+  ### Start.
   t_start = base::Sys.time()
-  message("Run: Getting data for inferring GRN for each branch ", t_start, ".")
+  message("Run: Getting data for inferring GRN for each branch. Time: ", t_start, ".")
   original_dir = base::getwd()
   new_folder = "5 Infer GRN"
   if (!base::dir.exists(new_folder)) {
     base::dir.create(new_folder, recursive = TRUE)
-    message("Folder already creates: ", new_folder, ".")
+    message("Folder created: ", new_folder, ".")
   } else {
     message("Folder already exists: ", new_folder, ".")
   }
   base::setwd(new_folder)
   message("The current working directory has been switched to: ", base::getwd(), ".")
 
+  ### Process.
   interest_cell_type_branch_data_for_GRN_infer = base::list()
   for (cell_type in names(interest_cell_type_branch_iGRN)) {
     message("Process cell type ", cell_type, ".")
     interest_cell_type_branch_data_for_GRN_infer[[cell_type]] = base::list()
     branch_GRN = interest_cell_type_branch_iGRN[[cell_type]]
 
-    message("Generating all row-column (TG-TF) combinations, and adding regulatory strength theta for each TF_TG pair.")
+    # Generate all TF-TG pairs for each branch and extract regulatory strength theta_i.
+    message("Generating all row-column (TG-TF) combinations, and adding regulatory strength theta for each TF-TG pair.")
     n_branch = base::length(branch_GRN)
     all_combinations = base::list()
     for (n in 1:n_branch) {
@@ -103,6 +120,7 @@ get_data_for_inferring_GRN = function(
         all_combinations[[base::paste0("branch_", n, "_GRN")]]$TG
       )
     }
+    # Merge all branch pairs and remove duplicates to get global TF-TG set.
     all_combinations[["GRN"]] = base::do.call(rbind, all_combinations)
     all_combinations[["GRN"]] = all_combinations[["GRN"]][!base::duplicated(all_combinations[["GRN"]]), ]
     rownames(all_combinations[["GRN"]]) = paste0(
@@ -111,16 +129,18 @@ get_data_for_inferring_GRN = function(
       all_combinations[["GRN"]]$TG
     )
 
+    # Add time-series cell state features (TFE, TGA, TGE) for each branch.
     message("Adding cell group states (TFE, TGA, TGE).")
     for (n in 1:n_branch) {
       message("Process branch ", n, " in cell type ", cell_type, ".")
       GRN = all_combinations[[base::paste0("branch_", n, "_GRN")]]
       N_re_all = base::nrow(GRN)
-      message("There are ", N_re_all, " potential regulatory relationship.")
+      message("In branch ", n, ", there are ", N_re_all, " potential regulatory relationships before filtering.")
 
+      # Partition data for parallel processing.
       message("Partitioning data.")
       each = base::floor(N_re_all / n_part)
-      each_last = N_re_all - each * (n_part - 1)
+      # each_last = N_re_all - each * (n_part - 1)
       GRN_list = base::list()
       for (s in 1:n_part) {
         if (s != n_part) {
@@ -130,7 +150,8 @@ get_data_for_inferring_GRN = function(
         )
       }
 
-      message("Adding cell group states (TFE, TGA, TGE) multithreadedly.")
+      # Parallel processing: add cell state features to each partition.
+      message("Adding cell group states (TFE, TGA, TGE) in parallel.")
       process_GRN_slice = function(s,
                                    GRN_list = GRN_list,
                                    TFs = base::colnames(branch_GRN[[n]]),
@@ -143,6 +164,7 @@ get_data_for_inferring_GRN = function(
         res = base::rownames(current_branch)
         for (TF_TG in res) {
           if (current_branch[TF_TG, "TF"] %in% TFs && current_branch[TF_TG, "TG"] %in% TGs) {
+            # Fill in TFE, TGA, TGE values for all time points.
             for (K in 1:ncol(TFE_T[[n]])) {
               current_branch[TF_TG, c(
                 base::paste0("TFE_", K), base::paste0("TGA_", K), base::paste0("TGE_", K)
@@ -151,7 +173,8 @@ get_data_for_inferring_GRN = function(
                      TGE_T[[n]][current_branch[TF_TG, "TG"], K])
             }
           } else {
-            current_branch = current_branch[!rownames(current_branch) %in% res[n_re], ]
+            # Remove pairs that are not in the current branch's gene set.
+            current_branch = current_branch[rownames(current_branch) != TF_TG, ]
           }
         }
         return(current_branch)
@@ -171,16 +194,25 @@ get_data_for_inferring_GRN = function(
         },
         mc.cores = ncores
       )
-      interest_cell_type_branch_data_for_GRN_infer[[cell_type]][[base::paste0("branch", n)]] = base::do.call("rbind", data_for_prediction_list)
+      df = base::do.call("rbind", data_for_prediction_list)
+
+      # Filter out pairs with zero regulatory strength.
+      message("Eliminating potential TF-TG pairs with a theta_i of zero.")
+      df = df[df$theta_i != 0, , drop = FALSE]
+      interest_cell_type_branch_data_for_GRN_infer[[cell_type]][[base::paste0("branch", n)]] = df
+      message("In branch ", n, ", there are ", base::nrow(df), " potential regulatory relationships after filtering.")
     }
-    interest_cell_type_branch_data_for_GRN_infer[[cell_type]][["GRN"]] = all_combinations[["GRN"]]
+    # Process global GRN set (filter zero theta pairs).
+    df_all = all_combinations[["GRN"]]
+    df_all = df_all[df_all$theta_i != 0, , drop = FALSE]
+    interest_cell_type_branch_data_for_GRN_infer[[cell_type]][["GRN"]] = df_all
   }
 
+  ### End.
   base::setwd(original_dir)
   message("The current working directory has been switched to: ", base::getwd(), ".")
   t_end = base::Sys.time()
-  message("Finish: Getting data for inferring GRN for each branch ", t_end, ".")
-  message("Running time: ")
-  base::print(t_end - t_start)
+  message("Finish: Getting data for inferring GRN for each branch. Time: ", t_end, ".")
+  message("Running time: ", base::format(t_end - t_start))
   return(interest_cell_type_branch_data_for_GRN_infer)
 }

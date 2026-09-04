@@ -1,53 +1,69 @@
-#' @title Select Training Sets in Dataset
+#' @title Select Training Sets for Gene Regulatory Network Modeling
 #'
 #' @description
-#' Selects high-confidence regulatory interactions from iGRN to construct training datasets for predictive modeling.
-#' The function applies multiple filtering criteria based on regulatory strength (theta) and integrates cell group state features (TFE, TGA, TGE) for each selected TF–TG pair.
+#' Extracts high-confidence TF-TG interactions from branch-level initial GRNs to
+#' construct training sets for downstream regulatory strength prediction.
+#' It implements multi-layer threshold filtering, optional refinement with TF coverage guarantee,
+#' and appends pseudotime-resolved expression/activity features for each branch.
 #'
-#' @param interest_cell_type_branch_iGRN The output of function get_branch_iGRN.
-#' @param top_n_for_max_theta_in_each_regulon Positive integer. Number of top theta values to keep for each TF and each TG independently. Default is 1.
-#' @param max_theta_retention_rate_in_tops Numeric between 0 and 1. Quantile threshold applied to thetas within the initial training set. Default is 1 (100%).
-#' @param max_theta_retention_rate_in_all Numeric between 0 and 1. Quantile threshold applied to thetas from all possible interactions. Default is 1 (100%).
-#' @param retention_number_of_tops Positive integer. Number of top theta interactions to retain. Default is 1000.
-#' @param refine Logical. If TRUE, further refines the training set by requiring mutual top membership (TF in top regulons of TG, and TG in top regulons of TF) and retains a top ratio. Default is TRUE.
-#' @param keep_all_TF Logical. When \code{refine = TRUE}, if TRUE, ensure that each TF is included in the training set.
-#' @param top_ratio_in_refine Numeric between 0 and 1. When \code{refine = TRUE}, retains the top proportion of thetas. Default is 1 (100%).
-#' @param interest_cell_type_group The output of function cell_grouping.
-#' @param ncores See in ?get_interest_cell_type_data.
+#' @param interest_cell_type_branch_iGRN Named list. Output from \code{\link{get_branch_iGRN}}, containing branch-specific iGRN matrices for each cell type.
+#' @param interest_cell_type_tau Named numeric vector. Output from \code{\link{get_cell_type_tau}}, with cell-type-specific binarization thresholds.
+#' @param interest_cell_type_group Named list. Output from \code{\link{cell_grouping}}, containing cell grouping results and aggregated gene expression/activity matrices per branch.
+#' @param top_n_for_max_theta_in_each_regulon Positive integer.
+#' Number of top interactions retained per TF and per TG separately;
+#' their union forms the initial training set. Defaults to 1.
+#' @param max_theta_retention_rate_in_tops Numeric between 0 and 1.
+#' Quantile retention ratio of regulatory strength within the initial training set. Defaults to 1 (no filtering).
+#' @param max_theta_retention_rate_in_all Numeric between 0 and 1.
+#' Quantile retention ratio of regulatory strength across the global candidate set. Defaults to 1 (no filtering).
+#' @param retention_number_of_tops Positive integer.
+#' Absolute number of top-ranked interactions by regulatory strength. Defaults to 1000.
+#' @param refine Logical.
+#' Whether to perform additional mutual-top refinement on the training set. Defaults to \code{TRUE}.
+#' @param keep_all_TF Logical. Whether to ensure every TF has at least one interaction retained after refinement.
+#' Only works when \code{refine = TRUE}. Defaults to \code{TRUE}.
+#' @param top_ratio_in_refine Numeric between 0 and 1.
+#' Quantile retention ratio of regulatory strength after the refinement step.
+#' Only works when \code{refine = TRUE}. Defaults to 1 (no filtering).
+#' @param ncores Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+#'   Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+#'   set to \code{1} when running on Windows.
 #'
-#' @returns
-#' A nested list structure organized by cell type and branch, containing:
+#' @return Nested list with the structure \code{list[[cell_type]][[branch]]}:
 #' \itemize{
-#' \item For each branch: A data frame with training datasets including:
-#' \itemize{
-#' \item \code{TG}: Target gene identifier
-#' \item \code{TF}: Transcription factor identifier
-#' \item \code{theta_i}: Regulatory strength from iGRN
-#' \item \code{TFE_K}, \code{TGA_K}, \code{TGE_K}: Cell group state features for each time point
-#' }\item An "all" element containing the combined training dataset across all branches
+#'   \item Each branch entry is a data frame with TF-TG pairs as rows.
+#'   Columns include \code{TF}, \code{TG}, \code{theta_i},
+#'   plus time-point-specific features \code{TFE_K}, \code{TGA_K}, \code{TGE_K}.
+#'   \item An \code{all} entry per cell type stores the global merged training set without time-point features.
 #' }
 #'
-#' @details
-#' The function performs the following key operations:
+#' @details The workflow is executed independently for each cell type:
 #' \enumerate{
-#' \item Generates all possible TF–TG pairs from the iGRN and attaches the regulatory strength (theta_i).
-#' \item For each TF and each TG, independently selects the top \code{top_n_for_max_theta_in_each_regulon} interactions (by theta_i) to form an initial training set.
-#' \item Applies three threshold filters to the initial training set: (a) a quantile threshold on the thetas within the training set (\code{max_theta_retention_rate_in_tops}), (b) a quantile threshold on the thetas from all interactions (\code{max_theta_retention_rate_in_all}), and (c) an absolute number threshold (\code{retention_number_of_tops}). The final training set must satisfy all three.
-#' \item If \code{refine} is TRUE and \code{keep_all_TF} is FALSE, further refines the training set by keeping only those interactions where the TF appears in the top regulons of the TG and the TG appears in the top regulons of the TF, and then retains the top \code{top_ratio_in_refine} of thetas.
-#' \item If \code{refine} is TRUE and \code{keep_all_TF} is TRUE, retrieve the training set with missing TF on the refined results (theta_i maximum) to ensure that each TF is included in the training set.
-#' \item For each branch, attaches the corresponding cell group state features (TFE, TGA, TGE) for each time point to the selected interactions.
-#' \item Returns a list for each cell type, with each element corresponding to a branch (and an "all" element) containing the training set data frame.
+#'   \item Generates all TF-TG pairs for each branch, attaches regulatory strength \code{theta_i}, and filters out pairs below the cell-type-specific \code{tau} threshold. Merges and deduplicates pairs across all branches to form the global candidate set.
+#'   \item Builds the initial training set as the union of top-N interactions ranked by \code{theta_i} for each TF and for each TG separately.
+#'   \item Marks three filter criteria on the initial training set (filtering is not applied at this stage):
+#'     \itemize{
+#'       \item Meets the within-training-set quantile threshold
+#'       \item Meets the global candidate-set quantile threshold
+#'       \item Ranks within the absolute top-N by regulatory strength
+#'     }
+#'   \item Optional refinement step (when \code{refine = TRUE}):
+#'     \itemize{
+#'       \item Retains pairs where the TF is in the top regulator set of the TG AND the TG is in the top target set of the TF
+#'       \item Applies an additional quantile filter by \code{theta_i}
+#'       \item If \code{keep_all_TF = TRUE}, adds back the strongest interaction for each missing TF to ensure full TF coverage
+#'     }
+#'   \item Applies all three pre-marked filter criteria; only pairs satisfying all three are retained.
+#'   \item Maps the final training set back to each branch: removes pairs absent from the current branch, and appends corresponding time-resolved TF expression, TG activity, and TG expression features.
 #' }
-#'
-#' @section Sampling Strategy:
-#' The function uses a stratified sampling approach to ensure that both the top regulators for each gene and the top targets for each TF are represented. The initial training set is formed by taking the top n interactions for each TF and each TG. Then, multiple thresholds are applied to further filter for high-confidence interactions.
 #'
 #' @note
-#' Important considerations:
 #' \itemize{
-#' \item The function uses parallel processing (via \code{parallel::mclapply}) to speed up computation across cell types. Adjust \code{ncores} according to your system.
-#' \item The training set selection is based on the regulatory strength (theta_i) from the iGRN. Ensure that the iGRN and cell group state features are properly generated by the upstream functions.
-#' \item The refinement step (\code{refine=TRUE}) can significantly reduce the number of interactions, which may be beneficial for model training but may also remove some potentially important interactions. Adjust the parameters accordingly.
+#'   \item The function creates a \code{4.1 Build Prediction Model - Select Training Set} directory and temporarily switches the working directory into it; the original path is restored on exit.
+#'   \item Numeric filter parameters are automatically clipped to valid ranges, and integer parameters are rounded internally.
+#'   \item Parallel computation relies on \code{\link[parallel]{mclapply}} and only works on Unix-like systems.
+#'   \item The refinement step can substantially reduce the number of interactions. Adjust \code{top_ratio_in_refine} to balance coverage and confidence.
+#'   \item Training set selection is fully based on regulatory strength from the iGRN. Ensure consistent upstream data processing.
 #' }
 #'
 #' @export
@@ -55,7 +71,10 @@
 #' @examples
 #' \dontrun{
 #' interest_cell_type_branch_iGRN = base::readRDS("./3 get iGRN/interest_cell_type_branch_iGRN.rds")
-#' interest_cell_type_group = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
+#' interest_cell_type_tau = base::readRDS("./3 get iGRN/interest_cell_type_tau.rds")
+#' interest_cell_type_group = base::readRDS(
+#'   "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+#' )
 #' top_n_for_max_theta_in_each_regulon = 1
 #' max_theta_retention_rate_in_tops = 0.8
 #' max_theta_retention_rate_in_all = 0.8
@@ -67,6 +86,7 @@
 #' # ncores = 1 # in Windows
 #' interest_cell_type_branch_training_set = select_training_set(
 #'   interest_cell_type_branch_iGRN = interest_cell_type_branch_iGRN,
+#'   interest_cell_type_tau  = interest_cell_type_tau ,
 #'   interest_cell_type_group = interest_cell_type_group,
 #'   top_n_for_max_theta_in_each_regulon = top_n_for_max_theta_in_each_regulon,
 #'   max_theta_retention_rate_in_tops = max_theta_retention_rate_in_tops,
@@ -78,31 +98,49 @@
 #'   ncores = ncores
 #' )
 #' }
-select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_type_branch_iGRN,
-                                interest_cell_type_group = interest_cell_type_group,
-                                top_n_for_max_theta_in_each_regulon = 1,
-                                max_theta_retention_rate_in_tops = 1,
-                                max_theta_retention_rate_in_all = 1,
-                                retention_number_of_tops = 1000,
-                                refine = TRUE,
-                                keep_all_TF = TRUE,
-                                top_ratio_in_refine = 1,
-                                ncores = 1)
+select_training_set = function(interest_cell_type_branch_iGRN,
+                               interest_cell_type_tau,
+                               interest_cell_type_group,
+                               top_n_for_max_theta_in_each_regulon = 1,
+                               max_theta_retention_rate_in_tops = 1,
+                               max_theta_retention_rate_in_all = 1,
+                               retention_number_of_tops = 1000,
+                               refine = TRUE,
+                               keep_all_TF = TRUE,
+                               top_ratio_in_refine = 1,
+                               ncores = 1)
 {
+  ### Start.
   t_start = base::Sys.time()
-  message("Run: Partitioning Training Sets ", t_start, ".")
+  message("Run: Partitioning Training Sets. Time: ", t_start, ".")
   original_dir = base::getwd()
   new_folder = "4.1 Build Prediction Model - Select Training Set"
   if (!base::dir.exists(new_folder)) {
     base::dir.create(new_folder, recursive = TRUE)
-    message("Folder already creates: ", new_folder, ".")
+    message("Folder created: ", new_folder, ".")
   } else {
     message("Folder already exists: ", new_folder, ".")
   }
   base::setwd(new_folder)
   message("The current working directory has been switched to: ", base::getwd(), ".")
 
+  ### Input validation.
+  if (!is.numeric(top_n_for_max_theta_in_each_regulon) ||
+      top_n_for_max_theta_in_each_regulon < 1 ||
+      top_n_for_max_theta_in_each_regulon != round(top_n_for_max_theta_in_each_regulon)) {
+    stop("'top_n_for_max_theta_in_each_regulon' must be a positive integer.")
+  }
+  if (!is.numeric(max_theta_retention_rate_in_tops) ||
+      max_theta_retention_rate_in_tops < 0 || max_theta_retention_rate_in_tops > 1) {
+    stop("'max_theta_retention_rate_in_tops' must be between 0 and 1.")
+  }
+  if (!is.logical(refine) || length(refine) != 1) {
+    stop("'refine' must be TRUE or FALSE.")
+  }
+
+  # Core processing function: select training set for one cell type (all branches combined)
   select_training_set_process = function(branch_GRN,
+                                         branch_tau,
                                          top_n_for_max_theta_in_each_regulon = 1,
                                          max_theta_retention_rate_in_tops = 1,
                                          max_theta_retention_rate_in_all = 1,
@@ -116,6 +154,8 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
     message("Generating all row-column (TG-TF) combinations, and adding regulatory strength theta for each TG_TF pair.")
     n_branch = base::length(branch_GRN)
     all_combinations = base::list()
+
+    # Generate all TF-TG pairs per branch, attach theta_i, filter by tau threshold
     for (n in 1:n_branch) {
       all_combinations[[base::paste0("branch_", n, "_GRN")]] = base::expand.grid(
         TG = base::rownames(branch_GRN[[n]]), TF = base::colnames(branch_GRN[[n]]), stringsAsFactors = FALSE
@@ -123,9 +163,17 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
       all_combinations[[base::paste0("branch_", n, "_GRN")]]$theta_i = base::apply(
         all_combinations[[base::paste0("branch_", n, "_GRN")]], 1, function(x) branch_GRN[[n]][x[1], x[2]]
       )
+      all_combinations[[base::paste0("branch_", n, "_GRN")]] = base::subset(
+        all_combinations[[base::paste0("branch_", n, "_GRN")]],
+        theta_i >= branch_tau
+      )
     }
-    all_combinations[["GRN"]] = base::do.call(rbind, all_combinations)
+
+    # Combine pairs from all branches, remove duplicates to get global candidate set
+    all_combinations[["GRN"]] = base::do.call(base::rbind, all_combinations)
     all_combinations[["GRN"]] = all_combinations[["GRN"]][!base::duplicated(all_combinations[["GRN"]]), ]
+
+    # Stratified filtering: build training set from global candidate pairs with multiple thresholds
     stratified_slice = function(data,
                                 top_n_for_max_theta_in_each_regulon = 1,
                                 max_theta_retention_rate_in_tops = 1,
@@ -134,7 +182,8 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
                                 refine = TRUE,
                                 keep_all_TF = TRUE,
                                 top_ratio_in_refine = 1) {
-      message("Threshold pretreatment.")
+      # Auto-clip parameters to valid ranges and coerce to integer where needed
+      message("Normalizing and clipping filter parameters to valid ranges.")
       top_n_for_max_theta_in_each_regulon = base::ifelse(
         top_n_for_max_theta_in_each_regulon < 1.5,
         1,
@@ -147,17 +196,19 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
         base::pmax(max_theta_retention_rate_in_all, 0), 1
       )
 
-      message("Ideas for selecting training sets: select the top ", top_n_for_max_theta_in_each_regulon,
-              " thetas with the largest values for each gene as the training set, retaining (take the intersection) the top ", max_theta_retention_rate_in_tops * 100,
-              "% of the training set, the top ", retention_number_of_tops,
-              " entries in the training set, and the top ", max_theta_retention_rate_in_all * 100,
-              "% portion from all samples.")
+      message("Training set strategy: take union of top ", top_n_for_max_theta_in_each_regulon,
+              " interactions per TF and per TG; 3 filters are applied after refinement.")
 
       message("Select the top ", top_n_for_max_theta_in_each_regulon, " thetas with the largest values for each TF.")
       TFregulon_top_n = base::list()
       for (TF in unique(data$TF)) {
         TFregulon = data[data$TF == TF, ]
-        TFregulon_top_n[[TF]] = dplyr::slice_max(.data = TFregulon, order_by = theta_i, n = top_n_for_max_theta_in_each_regulon, with_ties = FALSE)
+        TFregulon_top_n[[TF]] = dplyr::slice_max(
+          .data = TFregulon,
+          order_by = theta_i,
+          n = top_n_for_max_theta_in_each_regulon,
+          with_ties = FALSE
+        )
       }
       TFregulon_top_n = data.table::rbindlist(TFregulon_top_n)
 
@@ -174,10 +225,12 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
       }
       TGregulon_top_n = data.table::rbindlist(TGregulon_top_n)
 
-      message("Initialize training set.")
+      # Build initial training set: union of top-N interactions per TF and per TG
+      message("Building initial training set as union of top-N per-TF and per-TG pairs.")
       train_set = base::unique(base::rbind(TFregulon_top_n, TGregulon_top_n))
 
-      message("Filter training set based on threshold.")
+      # Mark three filter criteria on the initial training set (applied after refinement)
+      message("Marking three filter criteria on the initial training set.")
       train_set$max_theta_retention_rate_in_tops = base::ifelse(
         train_set$theta_i >= stats::quantile(
           train_set$theta_i,
@@ -198,67 +251,70 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
       )
       message("There are ", base::nrow(train_set), " regulons in training set.")
       message("There are ", base::length(base::unique(train_set$TF)), " TFs in training set.")
-      message("TFs are ")
-      base::print(base::sort(base::unique(train_set$TF)))
+      message("TFs: ", base::paste(base::sort(base::unique(train_set$TF)), collapse = ", "), ".")
       message("There are ", base::length(base::unique(train_set$TG)), " TGs in training set.")
+      message("TGs: ", base::paste(base::sort(base::unique(train_set$TG)), collapse = ", "), ".")
 
+      # Refinement step: filter by global top regulon membership and additional theta quantile
       if (refine == TRUE) {
-        message("Refine training set further.")
+        message("Running refinement step: global regulon membership filtering + theta quantile cutoff.")
         train_set0 = train_set
         train_set = train_set[
           (train_set$TF %in% base::unique(TGregulon_top_n$TF)) &
             (train_set$TG %in% base::unique(TFregulon_top_n$TG)),
         ]
-        message("Retain the top ", top_ratio_in_refine * 100, "%.")
-        train_set = train_set[train_set$theta_i >= quantile(
+        message("Retaining top ", top_ratio_in_refine * 100, "% of interactions by theta_i after refinement.")
+        train_set = train_set[train_set$theta_i >= stats::quantile(
           train_set$theta_i, probs = 1 - top_ratio_in_refine , na.rm = TRUE
         ), ]
 
         message("There are ", base::nrow(train_set), " regulons in training set after refining.")
         message("There are ", base::length(base::unique(train_set$TF)), " TFs in training set after refining.")
-        message("TFs are:")
-        base::print(base::sort(base::unique(train_set$TF)))
+        message("TFs: ", base::paste(base::sort(base::unique(train_set$TF)), collapse = ", "), ".")
         message("There are ", base::length(base::unique(train_set$TG)), " TGs in training set after refining.")
+        message("TGs: ", base::paste(base::sort(base::unique(train_set$TG)), collapse = ", "), ".")
 
+        # Ensure full TF coverage: add back missing TFs with their strongest interaction
         if (keep_all_TF == TRUE) {
           TFs_filter = base::setdiff(base::unique(train_set0$TF), base::unique(train_set$TF))
 
           message("There are ", base::length(TFs_filter), " regulons that are needed to add.")
-          message("Added TFs are: ")
-          base::print(base::sort(TFs_filter))
-          message("Whether add: ", base::length(TFs_filter) > 0)
+          message("Added TFs: ", base::paste(base::sort(TFs_filter), collapse = ", "), ".")
 
+          # message("Whether add: ", base::length(TFs_filter) > 0)
           if (base::length(TFs_filter) > 0) {
             for (TF_filter in TFs_filter) {
-              message("Added TF ", TF_filter, ".")
+              # message("Added TF ", TF_filter, ".")
               TF_filter_train_set = train_set0[train_set0$TF == TF_filter, , drop = FALSE]
               TF_filter_train_set = TF_filter_train_set[base::which.max(TF_filter_train_set$theta_i), , drop = FALSE]
-              message("Added sanple: ")
-              base::print(TF_filter_train_set)
+              # message("Added sample: ")
+              # base::print(TF_filter_train_set)
               train_set = base::rbind(train_set, TF_filter_train_set)
             }
 
             message("There are ", base::nrow(train_set), " regulons in training set after refining.")
             message("There are ", base::length(base::unique(train_set$TF)), " TFs in training set after refining.")
-            message("TFs are:")
-            base::print(base::sort(base::unique(train_set$TF)))
+            message("TFs: ", base::paste(base::sort(base::unique(train_set$TF)), collapse = ", "), ".")
             message("There are ", base::length(base::unique(train_set$TG)), " TGs in training set after refining.")
+            message("TGs: ", base::paste(base::sort(base::unique(train_set$TG)), collapse = ", "), ".")
           }
         }
       }
 
-      message("Output training set.")
+      # Apply all three pre-marked filter criteria; retain only pairs passing all three
+      message("Applying final triple filters and formatting output training set.")
       train_set = train_set[rowSums(train_set[, c(
         "max_theta_retention_rate_in_tops",
         "max_theta_retention_rate_in_all",
         "retention_number_of_tops")]) == 3, ]
       train_set = base::as.data.frame(train_set[, c("TF", "TG", "theta_i")])
-      message("The training set is:")
-      base::print(train_set)
+      # message("The training set is:")
+      # base::print(train_set)
       train_set = train_set[!base::duplicated(train_set), ]
       rownames(train_set) = base::paste0(train_set$TF, "_to_", train_set$TG)
-      message("After adding rownames, the training set is:")
-      base::print(train_set)
+      # message("After adding rownames, the training set is:")
+      # message("The training set is:")
+      # base::print(train_set)
       return(train_set)
     }
     slices_GRN = stratified_slice(
@@ -273,6 +329,7 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
     )
 
     message("Adding cell group states (TFE, TGA, TGE).")
+    # Attach branch-specific cell state features; remove pairs absent from the branch
     slices_branch_GRN = base::list()
     for (n in 1:n_branch) {
       slices_branch_GRN[[base::paste0("branch", n)]] = slices_GRN
@@ -301,6 +358,7 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
       message("Partitioning Training Sets from the data of ", cell_type, ".")
       select_training_set_process(
         branch_GRN = interest_cell_type_branch_iGRN[[cell_type]],
+        branch_tau = interest_cell_type_tau[cell_type],
         top_n_for_max_theta_in_each_regulon = top_n_for_max_theta_in_each_regulon,
         max_theta_retention_rate_in_tops = max_theta_retention_rate_in_tops,
         max_theta_retention_rate_in_all = max_theta_retention_rate_in_all,
@@ -316,12 +374,12 @@ select_training_set = function (interest_cell_type_branch_iGRN = interest_cell_t
     mc.cores = ncores
   )
 
+  ### End.
   base::names(interest_cell_type_branch_training_set) = base::names(interest_cell_type_branch_iGRN)
   base::setwd(original_dir)
   message("The current working directory has been switched to: ", base::getwd(), ".")
   t_end = base::Sys.time()
-  message("Finish: Partitioning Training Sets ", t_end, ".")
-  message("Running time: ")
-  base::print(t_end - t_start)
+  message("Finish: Partitioning Training Sets. Time: ", t_end, ".")
+  message("Running time: ", base::format(t_end - t_start))
   return(interest_cell_type_branch_training_set)
 }

@@ -2,72 +2,77 @@
 % Please edit documentation in R/get_interest_cell_type_data.R
 \name{get_interest_cell_type_data}
 \alias{get_interest_cell_type_data}
-\title{Extract and Process Data for Specific Cell Types}
+\title{Process Cell-Type-Specific Single-Cell Multi-Omics Data}
 \usage{
 get_interest_cell_type_data(
-  alpha_gene = 0.99,
-  alpha_cell = 0.99,
+  alpha_gene = 1,
+  alpha_cell = 1,
   interest_cell_type = interest_cell_type,
   Basic_Info = Basic_Info,
   ncores = 1
 )
 }
 \arguments{
-\item{alpha_gene}{Numeric (0-1). Threshold for gene filtering preliminary based on zero-expression rate.
-Genes with zero-expression rate higher than this value will be removed. Default is 0.99.
-It's not recommended to reset. Using default settings is advised.}
+\item{alpha_gene}{Numeric value between 0 and 1. Zero-expression rate threshold for gene filtering.
+Genes with a zero-expression proportion higher than this threshold will be removed.
+Defaults to \code{1} (no extra filtering beyond all-zero gene removal).}
 
-\item{alpha_cell}{Threshold for cell filtering preliminary based on zero-expression rate.
-Cells with zero-expression rate higher than this value will be removed. Default is 0.99.
-It's not recommended to reset. Using default settings is advised.}
+\item{alpha_cell}{Numeric value between 0 and 1. Zero-expression rate threshold for cell filtering.
+Cells with a zero-expression proportion higher than this threshold will be removed.
+Defaults to \code{1} (no extra filtering beyond all-zero cell removal).}
 
-\item{interest_cell_type}{Character vector. Names of cell types to extract and process (in meta.data of Seurat object).}
+\item{interest_cell_type}{Character vector. Target cell type names to extract.
+Must match values in the \code{seurat_annotations} metadata column of the input Seurat objects.}
 
-\item{Basic_Info}{The output of function get_expression_and_activity_matrix}
+\item{Basic_Info}{List. Output from the \code{\link{get_expression_and_activity_matrix}} function,
+which must contain \code{scRNAseq_for_GRN}, \code{scATACseq_for_GRN}, \code{gene_for_GRN},
+\code{TGs} and \code{TFs} elements.}
 
-\item{ncores}{Integer. Number of cores for parallel processing. Default is 1.
-Recommended to run this function in Linux for parallel computing capability.
-If running on Windows, ncores must be set to 1.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A named list (names correspond to cell types) where each element contains:
+A named list with one entry per input cell type (named by cell type).
+Each entry contains:
 \itemize{
-\item \code{interest_scRNAseq_for_GRN}: Filtered scRNA-seq data for the cell type
-\item \code{interest_scATACseq_for_GRN}: Filtered scATAC-seq data for the cell type
-\item \code{interest_gene_for_GRN}: Filtered gene vector for GRN construction
-\item \code{interest_TGs}: Filtered target genes present in the cell type
-\item \code{interest_TFs}: Filtered transcription factors present in the cell type
+\item \code{interest_scRNAseq_for_GRN}: Filtered scRNA-seq Seurat object
+\item \code{interest_scATACseq_for_GRN}: Filtered scATAC-seq Seurat object, with genes and cells fully aligned to the scRNA-seq data
+\item \code{interest_gene_for_GRN}: Gene set for GRN construction (union of filtered transcription factors and target genes)
+\item \code{interest_TGs}: Filtered target genes retained in the current cell type
+\item \code{interest_TFs}: Filtered transcription factors retained in the current cell type
 }
 }
 \description{
-This function processes single-cell multi-omics data for specified cell types by performing rigorous quality control,
-filtering genes and cells based on expression thresholds,
-and ensuring consistency between RNA expression and chromatin accessibility data.
+Extracts scRNA-seq and scATAC-seq data for specified cell types,
+performs quality control by filtering genes and cells based on zero-expression rates,
+and aligns the two omics datasets to ensure full consistency.
+The output is formatted for downstream GRN construction and pseudotime analysis.
 }
 \details{
-The function performs the following operations for each specified cell type:
+For each specified cell type, the function executes the following workflow:
 \enumerate{
-\item Extracts expression matrix and removes genes/cells with all zero counts
-\item Applies stringent filtering based on zero-expression rates using alpha thresholds
-\item Extracts and aligns activity matrix with the filtered RNA-seq data
-\item Ensures consistency between RNA and ATAC datasets
-\item Returns processed data ready for downstream pseudotime and GRN analysis
+\item Subsets the scRNA-seq object by target cell type, and removes genes and cells with all-zero counts
+\item Further filters genes and cells using the \code{alpha_gene} and \code{alpha_cell} zero-expression rate thresholds
+\item Subsets the scATAC-seq object by the same cell type, and aligns its gene and cell dimensions to the filtered scRNA-seq data
+\item Intersects the input gene sets (full gene list, TFs, TGs) with retained genes in the scRNA-seq data, and defines the final gene set as the union of filtered TFs and TGs
+\item Trims both omics datasets to the final gene set, verifies complete consistency of row and column names, and returns the processed data
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Requires that scATACseq_for_GRN contains a "seurat_annotations" metadata column (displays cell labels)
-\item Temporarily changes working directory but restores upon completion
-\item Uses parallel processing (Linux) for efficiency with multiple cell types
-\item Alpha parameters are critical hyperparameters that may need tuning
+\item Both \code{scRNAseq_for_GRN} and \code{scATACseq_for_GRN} must contain a \code{seurat_annotations} metadata column for cell type annotation.
+\item This function creates a subdirectory named \code{2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment} in the current working directory, temporarily switches the working directory into it, and restores the original directory on exit.
+\item Parallel computation relies on \code{\link[parallel]{mclapply}}, which does not support multicore on Windows.
 }
 }
 \examples{
 \dontrun{
 interest_cell_type = c("CD4 TEM", "cDc")
 # interest_cell_type = "Treg"
-Basic_Info = base::readRDS("./1.3 Data Preprocessing - Get Expression And Activity Matrix/Basic_Info.rds")
+Basic_Info = base::readRDS(
+  "./1.3 Data Preprocessing - Get Expression And Activity Matrix/Basic_Info.rds"
+)
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
 interest_cell_type_data = get_interest_cell_type_data(
@@ -75,6 +80,12 @@ interest_cell_type_data = get_interest_cell_type_data(
   Basic_Info = Basic_Info,
   ncores = ncores
 )
-base::saveRDS(interest_cell_type_data, file = "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment/interest_cell_type_data.rds")
+base::saveRDS(
+  interest_cell_type_data,
+  file = paste0(
+    "./2.1 Data Processing - Pseudotime Analysis And Cell Branching Assignment",
+    "/interest_cell_type_data.rds"
+  )
+)
 }
 }

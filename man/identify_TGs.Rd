@@ -2,60 +2,99 @@
 % Please edit documentation in R/identify_TGs.R
 \name{identify_TGs}
 \alias{identify_TGs}
-\title{Identify Target Genes via Chromatin Accessibility and Annotation}
+\title{Annotate ATAC Peaks and Identify Promoter-associated Target Genes}
 \usage{
 identify_TGs(
-  genome_for_anno = TxDb.Hsapiens.UCSC.hg38.knownGene,
-  promoter_range = 50,
-  scRNAseq = scRNAseq,
-  scATACseq = scATACseq,
-  annoDb = "org.Hs.eg.db"
+  genome_for_anno = TxDb.Hsapiens.UCSC.hg38.knownGene::TxDb.Hsapiens.UCSC.hg38.knownGene,
+  fragment_annotation_range = 5e+05,
+  scRNAseq,
+  scATACseq,
+  annoDb = org.Hs.eg.db::org.Hs.eg.db,
+  flankDistance = 10000
 )
 }
 \arguments{
-\item{genome_for_anno}{A TxDb object for genome annotation (e.g., TxDb.Hsapiens.UCSC.hg38.knownGene, TxDb.Hsapiens.UCSC.hg19.knownGene).
-Default is TxDb.Hsapiens.UCSC.hg38.knownGene.}
+\item{genome_for_anno}{A \code{TxDb} object for genome annotation.
+Defaults to \code{TxDb.Hsapiens.UCSC.hg38.knownGene::TxDb.Hsapiens.UCSC.hg38.knownGene}.}
 
-\item{promoter_range}{A positive numeric object. Defines the promoter region around TSS (in base pairs). Default is 50 bp.}
+\item{fragment_annotation_range}{Positive numeric. Annotation range around TSS in base pairs,
+used to define promoter-proximal regions. Defaults to 500000.
+Smaller values reduce runtime but may exclude distal regulatory elements.}
 
 \item{scRNAseq}{A Seurat object containing scRNA-seq data (the initially loaded data) and gene names as rownames.
-The \code{scRNAseq@meta.data} contains the seurat_annotation column, which describes cell labels.}
+The \code{scRNAseq@meta.data} contains the \code{"seurat_annotation"} column, which describes cell labels.
+Used to filter target genes detectable in transcriptome data.}
 
-\item{scATACseq}{A Seurat object containing scATAC-seq data (the initially loaded data) with files _fragments.tsv.gz.tbi and _fragments.tsv.gz (in Signac framework).
+\item{scATACseq}{A Seurat object containing scATAC-seq data (the initially loaded data) with files \code{_fragments.tsv.gz.tbi} and \code{_fragments.tsv.gz} (in \code{Signac} framework),
+whose peak ranges are used for annotation.
 The \code{scATACseq@meta.data} contains the seurat_annotation column, which describes cell labels.}
 
-\item{annoDb}{"org.Hs.eg.db". Specifies the organism-level annotation package.}
+\item{annoDb}{An \code{OrgDb} object for organism-level gene ID conversion.
+Defaults to \code{org.Hs.eg.db::org.Hs.eg.db}.}
+
+\item{flankDistance}{Non-negative numeric. Distance (bp) extended upstream and downstream
+of each peak to search for flanking genes. Defaults to 10000.
+See \code{\link[ChIPseeker]{annotatePeak}} for implementation details.}
 }
 \value{
-A list containing two elements:
-peak_anno_promoter: A data frame of annotated peaks.
-TGs: A character vector of unique target gene symbols identified.
+A list with two elements:
+\describe{
+\item{peak_anno_promoter}{Data frame of annotated peaks located in promoter regions,
+with added flanking gene symbols, and all associated genes present in scRNA-seq.}
+\item{TGs}{Character vector of unique target gene symbols.}
+}
 }
 \description{
-This function performs genomic annotation on chromatin accessibility peaks (from scATAC-seq) to identify potential target genes (TGs) with open promoter.
-It uses the ChIPseeker package for peak annotation
-and generates output files including annotation plots (peak_anno.png), annotation results (peak_anno.csv), and identified TGs (TGs.csv).
+Performs genomic annotation on scATAC-seq chromatin accessibility peaks,
+identifies target genes associated with open promoter regions, and retains only genes
+detected in the matched scRNA-seq data. Generates annotation tables and visualization files.
+}
+\details{
+The function follows a 4-step workflow:
+\enumerate{
+\item \strong{Peak annotation}: Annotate all ATAC peaks via \code{\link[ChIPseeker]{annotatePeak}}
+with the specified TSS range, and append flanking gene information.
+\item \strong{Quality filtering}: Remove peaks with missing ENSEMBL ID, gene symbol or annotation.
+Save the full annotation table and a genomic feature distribution bar plot.
+\item \strong{Promoter peak extraction}: Subset peaks annotated as promoter regions.
+Parse flanking transcript IDs, remove version suffixes, and convert to official gene symbols.
+\item \strong{Target gene filtering}: Intersect promoter-associated genes with genes in scRNA-seq
+as the final target gene set, and subset the promoter peak table accordingly.
+}
 }
 \note{
-The scRNA-seq data and scATAC-seq data need to be loaded as objects named scRNAseq and scATACseq,
+\itemize{
+\item The function creates an output directory and temporarily switches the working directory
+during execution, and restores the original path upon completion.
+\item Output files (\code{peak_anno.png}, \code{peak_anno.csv}, \code{TGs.csv}) are saved
+under the \code{1.2 Data Preprocessing - Identify TGs By Annotation} directory.
+\item The term "promoter" here is defined broadly by the TSS range set via \code{fragment_annotation_range}.
+\item The scRNA-seq data and scATAC-seq data need to be loaded as objects named scRNAseq and scATACseq,
 respectively, and they must come from the same cells with identical cell labels.
+This is a strict input requirement for scDERI, although the function will still run even if it is not met.
+}
 }
 \examples{
 \dontrun{
 library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-# Load scRNA-seq data and scATAC-seq data as object scRNAseq and scATACseq with the same cells and cell labels.
+# Load scRNA-seq data and scATAC-seq data
+# as object scRNAseq and scATACseq with the same cells and cell labels.
 # scRNAseq = SeuratData::LoadData("pbmcMultiome", "pbmc.rna")
 # scATACseq = SeuratData::LoadData("pbmcMultiome", "pbmc.atac")
 scRNAseq = base::readRDS("./scRNAseq.rds")
 scATACseq = base::readRDS("./scATACseq.rds")
-promoter_range = 50
+addFlankGeneInfo = base::min(10000, fragment_annotation_range)
 results_identify_TGs = identify_TGs(
   genome_for_anno = TxDb.Hsapiens.UCSC.hg38.knownGene,
-  promoter_range = promoter_range,
+  fragment_annotation_range = 500000,
   scRNAseq = scRNAseq,
   scATACseq = scATACseq,
-  annoDb = "org.Hs.eg.db"
+  annoDb = org.Hs.eg.db::org.Hs.eg.db,
+  flankDistance = 10000
 )
-base::saveRDS(results_identify_TGs, file = "./1.1 Data Preprocessing - Identify TGs By Annotation/results_identify_TGs.rds")
+base::saveRDS(
+  results_identify_TGs,
+  file = "./1.2 Data Preprocessing - Identify TGs By Annotation/results_identify_TGs.rds"
+)
 }
 }

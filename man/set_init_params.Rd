@@ -2,46 +2,61 @@
 % Please edit documentation in R/set_init_params.R
 \name{set_init_params}
 \alias{set_init_params}
-\title{Initialize Model Parameters for Gene Regulatory Network Prediction}
+\title{Initialize Parameters for scDERI Gene Regulatory Network Model}
 \usage{
-set_init_params(
-  interest_cell_type_branch_training_set = interest_cell_type_branch_training_set
-)
+set_init_params(interest_cell_type_branch_training_set)
 }
 \arguments{
-\item{interest_cell_type_branch_training_set}{The output of function select_training_set.}
+\item{interest_cell_type_branch_training_set}{Named list.
+Output from the \code{\link{select_training_set}} function,
+containing branch-level training sets with expression and activity features.}
 }
 \value{
-A nested list structure containing initialized parameters for each cell type and branch.
+Nested list with the hierarchy \code{cell type → branch → TF-TG interaction}.
+The innermost layer contains 7 categories of model parameters,
+each with three elements: \code{initialization}, \code{upper} and \code{lower}.
+The merged "all" dataset is not included in the output.
 }
 \description{
-This function initializes the parameter structures for the gene regulatory network prediction model scDEDS.
+Generates initialized parameter structures for the scDERI gene regulatory network model for each TF-TG pair across cell types and branches.
+Each parameter is assigned an initial value, upper bound and lower bound for subsequent optimization, with baseline expression parameters adaptively initialized from training set means.
 }
 \details{
-The function performs the following operations:
+The workflow is executed independently for each cell type:
 \enumerate{
-\item Creates a hierarchical parameter structure for each cell type, branch, and regulatory interaction (TF-TG pair).
-\item Initializes parameters for the scDEDS model, including:
+\item Builds a hierarchical parameter structure for each branch, excluding the merged "all" dataset at the end of the input list.
+\item Initializes 7 categories of scDERI model parameters for each TF-TG pair:
 \itemize{
-\item \code{r}: Regulatory interaction parameters (r2_TG, r2_TF) with initial values, upper, and lower bounds.
-\item \code{alpha}: Cell group state association parameters (alpha1, alpha2 for TG and TF) for each time point K.
-\item \code{beta}: Linear coefficients (beta1, beta2, beta3 for TG and TF) for each time point K.
-\item \code{s}: Scaling factors (s1_TG, s1_TF, s2_TG, s2_TF).
-\item \code{u}: Non-linear transformation parameters (u11_TG, u21_TG, u311_TG, u321_TG, u331_TG, u12_TG, u22_TG, u312_TG, u322_TG, u332_TG).
-\item \code{E~}: Baseline expression levels (E~TG_K-1, E~TF_K-1) for each time point K, initialized as the mean of TGE and TFE from the training set, respectively.
-\item \code{v}: Additional scaling parameters (v1_TG, v2_TG, v3_TG).
+\item \code{r}: effect efficiency function parameters (only r2 is trained)
+\item \code{alpha}: effect conversion rate parameters
+\item \code{beta}: linear correction term parameters
+\item \code{s}: power constant parameters
+\item \code{u}: Hill-type non-linear transformation parameters, including dissociation constants and Hill coefficients
+\item \code{E~}: environmental baseline expression level parameters
+\item \code{v}: rate parameters for maximum production, spontaneous degradation and usage-induced degradation
 }
-\item For each TF-TG pair, the function uses the mean TFE and TGE values from the training set to initialize the E~ parameters.
-\item All parameters are assigned initial values, upper bounds, and lower bounds to constrain the optimization process.
-\item The function organizes the parameters in a nested list structure, first by cell type, then by branch, and finally by regulatory interaction (TF-TG pair).
+\item Adaptively initializes baseline parameters \code{E~_TG} and \code{E~_TF} using the mean TGE and TFE values across time points from the training set, and sets corresponding bounds accordingly.
+\item Presets initial values, upper bounds and lower bounds for all parameters to constrain the parameter space of subsequent optimization.
+}
+}
+\note{
+\itemize{
+\item The function creates a \code{4.2 Build Prediction Model} directory and temporarily switches the working directory into it; the original path is restored upon completion.
+\item Baseline expression parameters are data-adaptively initialized to improve optimization convergence efficiency.
+\item Parameter bounds are preset based on biological interpretability and numerical stability, and generally do not need manual adjustment.
 }
 }
 \examples{
 \dontrun{
-interest_cell_type_branch_training_set = base::readRDS("./4.1 Build Prediction Model - Select Training Set/interest_cell_type_branch_training_set.rds")
+interest_cell_type_branch_training_set = base::readRDS(
+  "./4.1 Build Prediction Model - Select Training Set/interest_cell_type_branch_training_set.rds"
+)
 interest_cell_type_branch_init_params = set_init_params(
   interest_cell_type_branch_training_set = interest_cell_type_branch_training_set
 )
-base::saveRDS(interest_cell_type_branch_init_params, file = "./4.2 BUild Prediction Model/interest_cell_type_branch_init_params.rds")
+base::saveRDS(
+  interest_cell_type_branch_init_params,
+  file = "./4.2 Build Prediction Model/interest_cell_type_branch_init_params.rds"
+)
 }
 }

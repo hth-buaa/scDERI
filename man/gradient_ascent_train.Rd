@@ -2,7 +2,7 @@
 % Please edit documentation in R/gradient_ascent_train.R
 \name{gradient_ascent_train}
 \alias{gradient_ascent_train}
-\title{Gradient Ascent Optimization for Model Training}
+\title{Gradient Ascent for Local Parameter Refinement}
 \usage{
 gradient_ascent_train(
   iterations,
@@ -18,103 +18,94 @@ gradient_ascent_train(
   monitor = FALSE,
   params_names = params_names,
   train_data = train_data,
-  tao = tao,
-  Tslot_K = Tslot_K
+  tau = tau,
+  Tslot_K = Tslot_K,
+  params_init = params_init
 )
 }
 \arguments{
-\item{iterations}{Iterations Integer. Maximum number of gradient ascent iterations to perform.}
+\item{iterations}{Positive integer. Maximum number of gradient ascent iterations.}
 
-\item{alpha_lower}{Numeric. Lower bound for learning rate search range. Default is 1e-5.}
+\item{alpha_lower}{Tiny positive numeric. Lower bound of learning rate search range. Defaults to 1e-5.}
 
-\item{alpha_upper}{Numeric. Upper bound for learning rate search range. Default is 1e-3.}
+\item{alpha_upper}{Tiny positive numeric. Upper bound of learning rate search range. Defaults to 1e-3.}
 
-\item{alpha_guess}{Numeric. Initial guess for learning rate in the optimization from alpha_lower to alpha_upper. Default is 1e-4.}
+\item{alpha_guess}{Numeric between \code{alpha_lower} and \code{alpha_upper}. Initial guess for learning rate optimization. Defaults to 1e-4.}
 
-\item{init_theta}{Numeric vector. Initial parameter values for optimization.}
+\item{init_theta}{Numeric vector in [0, 1]. Initial parameter values to start optimization from.}
 
-\item{h_max}{Numeric. Maximum step size for numerical gradient computation. Default is 0.01.}
+\item{h_max}{Tiny positive numeric. Maximum step size for numerical gradient approximation. Defaults to 0.01.}
 
-\item{h_min_percent}{Numeric. Minimum step size as percentage of parameter range for numerical gradient. Default is 0.01 (1\%).}
+\item{h_min_percent}{Tiny positive numeric in [0, 1].
+Minimum step size for numerical gradient, as a proportion of the parameter value range. Defaults to 0.01.}
 
-\item{ncores}{See in ?get_interest_cell_type_data.
-While this code can be executed on Windows systems, it is still strongly recommended to run it on Linux systems, as the execution time without parallel computing would be astronomically long.
-The actual runtime depends on the total available RAM, the number of CPU cores, the previously determined number of cell groups, and the number of transcription factors (TFs) and target genes (TGs) obtained.
-Larger core counts, fewer cell groups, and fewer genes correspond to shorter runtime, while the total available RAM dictates the maximum number of cores that can participate in parallel computing.}
+\item{ncores}{Positive integer. Number of cores for parallel gradient computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 
-\item{params_lower}{See in ?f_train_cal_gr.}
+\item{params_lower}{Numeric vector. Lower bounds of model parameters.}
 
-\item{params_upper}{See in ?f_train_cal_gr.}
+\item{params_upper}{Numeric vector. Upper bounds of model parameters.}
 
-\item{monitor}{Logical. If TRUE, prints monitoring information (iteration number, objective value, and learning rate) at each iteration. Default is FALSE.}
+\item{monitor}{Logical. Whether to print iteration progress. Defaults to \code{FALSE}.}
 
-\item{params_names}{See in ?f_train_cal.}
+\item{params_names}{Character vector. Names corresponding to each parameter element.}
 
-\item{train_data}{See in ?f_train_cal.}
+\item{train_data}{Data frame. Training data for a single TF-TG pair.}
 
-\item{tao}{See in ?f_train_cal.}
+\item{tau}{Positive numeric. Regulatory binarization threshold.}
 
-\item{Tslot_K}{See in ?f_train_cal.}
+\item{Tslot_K}{Positive numeric vector. Pseudotime interval lengths.}
+
+\item{params_init}{Numeric vector. Initial parameter values for regularization.}
 }
 \value{
-A list containing two elements:
+List with two elements:
 \itemize{
-\item \code{parameters}: Optimized parameter vector that maximizes the objective function
-\item \code{objective_value}: The maximized objective function value
+\item \code{parameters}: Optimized parameter vector that maximizes the objective function.
+\item \code{objective_value}: Maximum objective function value achieved.
 }
-The optimization process stops early if no improvement is detected in consecutive iterations.
+Optimization stops immediately if the objective value does not improve in one iteration.
 }
 \description{
-This function performs gradient ascent optimization to maximize the objective function for training the gene regulatory network prediction model.
-It iteratively updates model parameters using gradient information and adaptive learning rate selection to find optimal parameter values that maximize the model's predictive performance.
+Performs gradient ascent optimization to maximize the scDERI training objective.
+Implements numerical gradient computation, adaptive learning rate selection via Brent's method,
+parameter boundary clipping and early stopping for local parameter refinement.
 }
 \details{
-The function implements the following optimization strategy:
+Each iteration follows the workflow below:
 \enumerate{
-\item Initialization: Sets initial parameters
-\item Gradient Computation: Uses numerical gradient approximation with parallel processing
-\item Learning Rate Optimization: Finds optimal step size using Brent's method for each iteration
-\item Parameter Update: Updates parameters with gradient ascent, respecting parameter bounds
-\item Convergence Check: Stops early if objective function fails to improve
+\item Computes numerical gradients for all parameters in parallel via \code{\link{f_train_cal_gr}}.
+\item Skips parameters with zero gradient to avoid redundant updates.
+\item Searches for the optimal learning rate within the given range using Brent's one-dimensional method via \code{\link[stats]{optim}}.
+\item Updates parameters and clips values to stay within predefined bounds.
+\item Terminates early if the objective value does not increase.
 }
-The algorithm uses adaptive learning rate selection and parameter bounding to ensure stable convergence.
-The optimization maximizes the objective function defined in \code{f_train_cal}.
 }
 \note{
-Important considerations:
 \itemize{
-\item Uses numerical gradient approximation which may be less accurate than analytical gradients
-\item The optimization process is computationally intensive, especially with many parameters
-\item Early stopping helps prevent overfitting
-\item Learning rate bounds may need adjustment for different problem domains
-\item Parallel processing significantly speeds up gradient computation
+\item Uses forward finite difference approximation, which is computationally cheaper
+but less accurate than central difference.
+\item Designed for local refinement after global search (e.g. genetic algorithm),
+not for full training from random initialization.
+\item Parallel gradient computation relies on \code{\link[parallel]{mclapply}};
+set \code{ncores = 1} on Windows systems.
 }
 }
 \examples{
 \dontrun{
-iterations_grad = 3
-ncores = parallel::detectCores() - 1 # in Linux
-# ncores = 1 # in Windows
-# The settings for the other parameters are inside the function scDEDS::model_train.
-t = base::Sys.time();result_gradient =  gradient_ascent_train(
-  iterations = iterations_grad,
-  alpha_lower = 1e-05,
-  alpha_upper = 1e-03,
-  alpha_guess = 1e-04,
-  init_theta = as.numeric(result_ga@solution[1,]),
-  h_max = 0.01,
-  h_min_percent = 0.01,
-  ncores = 1,
-  params_lower = params_lower,
-  params_upper = params_upper,
-  monitor = FALSE,
-  params_names = params_names,
+# Refine parameters from GA solution
+grad_result <- gradient_ascent_train(
+  iterations = 30,
+  init_theta = as.numeric(ga_result@solution[1, ]),
+  params_lower = param_lower,
+  params_upper = param_upper,
+  params_names = param_names,
   train_data = train_data,
-  tao = tao,
-  Tslot_K = Tslot_K
-); base::print(base::Sys.time(); - t)
+  tau = tau,
+  Tslot_K = Tslot_K,
+  params_init = param_init,
+  ncores = 1
+)
 }
-}
-\seealso{
-\code{\link{f_train_cal}}, \code{\link{f_train_cal_gr}}, \code{\link[stats]{optim}}
 }

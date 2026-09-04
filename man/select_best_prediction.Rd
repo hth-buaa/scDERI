@@ -2,101 +2,96 @@
 % Please edit documentation in R/select_best_prediction.R
 \name{select_best_prediction}
 \alias{select_best_prediction}
-\title{Select Best Predictions for Gene Regulatory Networks}
+\title{Select Best GRN Predictions with Multi-Level Filtering}
 \usage{
 select_best_prediction(
-  interest_cell_type_pGRN = interest_cell_type_pGRN,
-  interest_cell_type_branch_model_train = interest_cell_type_branch_model_train,
-  interest_cell_type_tao = interest_cell_type_tao,
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
+  interest_cell_type_pGRN,
+  interest_cell_type_tau,
+  interest_cell_type_genes_pseudotime_info,
   fit_loss_quantile_threshold = 0.2,
   theta_p_quantile_threshold = 0.8,
-  fit_loss_upper = 0.2,
-  theta_p_lower = 0.2,
+  fit_loss_upper = 999,
+  theta_p_lower = 0,
   each = 1e+06,
   ncores = 1
 )
 }
 \arguments{
-\item{interest_cell_type_pGRN}{The output of function infer_GRN.}
+\item{interest_cell_type_pGRN}{List. Output from \code{\link{infer_GRN}}.}
 
-\item{interest_cell_type_branch_model_train}{The output of model_train.}
+\item{interest_cell_type_tau}{Named numeric vector. Output from \code{\link{get_cell_type_tau}}, cell-type-specific binarization thresholds.}
 
-\item{interest_cell_type_tao}{The output of function get_cell_type_tao.}
+\item{interest_cell_type_genes_pseudotime_info}{List. Output from \code{\link{get_genes_pseudotime_info}}, containing cell counts per branch for weighted integration.}
 
-\item{interest_cell_type_genes_pseudotime_info}{The output of function get_genes_pseudotime_info.}
+\item{fit_loss_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for filtering predictions based on loss. Defaults to 0.2.}
 
-\item{fit_loss_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for filtering predictions based on loss. Default is 0.2 (20th percentile).}
+\item{theta_p_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for regulatory strength filtering. Defaults to 0.8.}
 
-\item{theta_p_quantile_threshold}{Numeric between 0 and 1. Quantile threshold for filtering predictions based on regulatory strength. Default is 0.8 (80th percentile).}
+\item{fit_loss_upper}{Positive numeric. Absolute upper bound of acceptable fitting loss. Defaults to 999 (no filtering by default). Intended for development and debugging only; quantile thresholds are recommended for routine use.}
 
-\item{fit_loss_upper}{Positive numeric. Upper bound for acceptable fitting loss. Default is 0.2.}
+\item{theta_p_lower}{Numeric between 0 and 1. Absolute lower bound of acceptable regulatory strength. Defaults to 0 (no filtering by default). Intended for development and debugging only.}
 
-\item{theta_p_lower}{Numeric between 0 and 1. Lower bound for acceptable regulatory strength. Default is 0.2.}
+\item{each}{Positive integer. Maximum number of TF-TG pairs per chunk for parallel processing. Defaults to 1,000,000.}
 
-\item{each}{See in ?infer_GRN.}
-
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-The input list \code{interest_cell_type_pGRN} with two additional elements for each cell type:
+The input list \code{interest_cell_type_pGRN} with added elements, organized by cell type:
 \itemize{
-\item For each branch: A data frame \code{best_result} containing the best theta_p, loss, and the model used for each TF-TG pair.
-\item A \code{pred_summary} data frame that integrates results across branches, with weighted averages for theta_p and fit_loss.
+\item For each branch: a \code{best_result} data frame is added, containing optimal regulatory strength (\code{theta_p}), corresponding fitting loss, and the selected model name for each TF-TG pair.
+\item A cell-type-level \code{pred_summary} data frame, which integrates results across all branches, including branch-specific values and cell-count-weighted averages of \code{theta_p} and \code{fit_loss}.
 }
 }
 \description{
-Filters and selects the best predictions from inferred gene regulatory networks (GRN) by applying multiple quality thresholds.
-The function processes each cell type and branch independently, selects the optimal regulatory strength (theta_p) and fitting loss for each TF-TG pair, and integrates results across branches using weighted averaging based on cell counts.
+Post-processes inferred gene regulatory network results to select high-confidence regulatory predictions.
+For each TF-TG pair per branch, it selects the optimal prediction from multiple trained models via a four-level hierarchical filtering strategy, combining quantile thresholds and absolute bounds.
+It further integrates branch-level results into cell-type-level summary using cell-count weighted averaging.
 }
 \details{
-The selection process follows a multi-step strategy:
+The function executes the following workflow independently for each cell type:
 \enumerate{
-\item \strong{Threshold Calculation}: Determines loss and theta_p thresholds using quantiles and fixed bounds.
-\item \strong{Parallel Processing}: Partitions data for efficient parallel computation.
-\item \strong{Best Prediction Selection}: For each TF-TG pair, selects the best prediction based on a hierarchy of criteria:
-\itemize{
-\item Uses predictions with loss below the training loss maximum to find the best prediction.
-\item If fails, uses predictions with loss below the calculated loss threshold to find the best prediction.
-\item If fails, uses predictions with theta_p above the calculated theta_p threshold to find the best prediction.
-\item If fails, selects the prediction with the minimum loss to find the best prediction.
+\item \strong{Threshold calculation}: Computes branch-specific filtering thresholds by fusing quantile statistics and absolute bounds, generating two loss thresholds (tight and standard) and one minimum regulatory strength threshold.
+\item \strong{Data partitioning}: Splits TF-TG pairs into chunks to control memory usage and enable parallel processing.
+\item \strong{Four-level hierarchical selection}: For each TF-TG pair, selects the optimal prediction in priority order with fallback logic to ensure complete coverage:
+\enumerate{
+\item Retain predictions below the tight loss threshold, select the one with maximum \code{theta_p}.
+\item Fall back to the standard loss threshold if no result meets the first criterion, select the one with maximum \code{theta_p}.
+\item Fall back to predictions above the minimum strength threshold, select the one with minimum loss.
+\item Fall back to the prediction with minimum loss directly if all thresholds fail.
 }
-\item \strong{Result Integration}: Combines branch-specific results using weighted averaging based on cell counts.
-\item \strong{Quality Control}: Removes predictions with theta_p outside the range from 0.011 to 0.989.
+\item \strong{Post-filtering}: Removes invalid boundary values (\code{theta_p} < 0.011) and infinite loss values.
+\item \strong{Cross-branch integration}: Aggregates branch-level optimal results, and computes cell-count-weighted averages to generate the cell-type-level final GRN.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Parallel processing speeds up the selection, especially for large datasets.
-\item The \code{each} parameter controls memory usage; reduce if memory issues occur.
-\item The function modifies the input list by adding new elements; original data is preserved.
-\item Adjust quantile thresholds to balance sensitivity and specificity.
+\item The function creates and temporarily switches to the \code{5 Infer GRN} directory, and restores the original working directory on exit.
+\item The \code{each} parameter controls peak memory usage; reduce its value if out-of-memory errors occur.
+\item The function appends new elements to the input list; the original input object is not modified in place.
+\item A fixed threshold of 0.011 is applied to filter out boundary-invalid \code{theta_p} values after selection.
+\item Parallel computation relies on \code{\link[parallel]{mclapply}}; set \code{ncores = 1} on Windows systems.
 }
 }
 \examples{
 \dontrun{
 interest_cell_type_pGRN = base::readRDS("./5 Infer GRN/interest_cell_type_pGRN.rds")
-interest_cell_type_branch_model_train = base::readRDS("./4.2 BUild Prediction Model/interest_cell_type_branch_model_train.rds")
-interest_cell_type_tao = base::readRDS("./3 get iGRN/interest_cell_type_tao.rds")
-interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
-fit_loss_quantile_threshold1 = 0.2
-theta_p_quantile_threshold1 = 0.8
-fit_loss_upper1 = 0.2
-theta_p_lower1 = 0.2
-each = 1000
+interest_cell_type_tau = base::readRDS("./3 get iGRN/interest_cell_type_tau.rds")
+interest_cell_type_genes_pseudotime_info = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+)
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
 interest_cell_type_pGRN = select_best_prediction(
   interest_cell_type_pGRN = interest_cell_type_pGRN,
-  interest_cell_type_branch_model_train = interest_cell_type_branch_model_train,
-  interest_cell_type_tao = interest_cell_type_tao,
+  interest_cell_type_tau = interest_cell_type_tau,
   interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-  fit_loss_quantile_threshold = fit_loss_quantile_threshold1,
-  theta_p_quantile_threshold = theta_p_quantile_threshold,
-  fit_loss_upper = fit_loss_upper1,
-  theta_p_lower = theta_p_lower1,
-  each = each,
+  fit_loss_quantile_threshold = 0.2,
+  theta_p_quantile_threshold = 0.8,
+  fit_loss_upper = 999,
+  theta_p_lower = 0,
+  each = 1000,
   ncores = ncores
 )
 base::saveRDS(interest_cell_type_pGRN, file = "./5 Infer GRN/interest_cell_type_pGRN.rds")

@@ -2,25 +2,32 @@
 % Please edit documentation in R/S_cal.R
 \name{S_cal}
 \alias{S_cal}
-\title{The function S1 or S2 in the evolutionary equations of the paper}
+\title{Calculate S-type Regulatory Rate Correction Term}
 \usage{
 S_cal(s, U, U_tilde)
 }
 \arguments{
-\item{s}{Numeric greater than 0. cGenerally range from 0.2 to 5.}
+\item{s}{Positive numeric. Shape parameter controlling the nonlinearity of the S function.}
 
-\item{U}{Numeric ranging from 0 to 1. An intermediate variable.}
+\item{U}{Numeric between 0 and 1. Hill function output at the current time point,
+representing the fractional binding level.}
 
-\item{U_tilde}{Numeric ranging from 0 to 1. Numeric ranging from 0 to 1.}
+\item{U_tilde}{Numeric between 0 and 1. Steady-state Hill function output,
+representing the equilibrium fractional binding level.}
 }
 \value{
-Numeric. The computation results of function  S1 or S2.
+Numeric. S-type correction term used to adjust regulatory efficiency in dynamic equations.
 }
 \description{
-The function S1 or S2 in the evolutionary equations of the paper
+Computes the S-type correction term used in gene expression dynamic equations.
+It calculates a nonlinear regulatory rate coefficient based on current and steady-state Hill binding levels.
 }
 \examples{
 \dontrun{
-print(S_cal(s = s1, U = U1[prev_idx], U_tilde = U1_tilde[prev_idx]))
+S_val <- S_cal(
+  s = s1,
+  U = U_current,
+  U_tilde = U_steady
+)
 }
 }

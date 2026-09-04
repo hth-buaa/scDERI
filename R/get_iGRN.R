@@ -4,8 +4,8 @@
 #' This function consolidates branch-specific initial gene regulatory networks (iGRNs) into comprehensive cell type-specific iGRNs.
 #' It aggregates information from all branches within each cell type to create unified TF-TG association matrices that represent the complete regulatory landscape for each cell type.
 #'
-#' @param interest_cell_type_iGRN_all_TGTF_pairs The output of function get_iGRN_by_TFBS_pwm_by_JASPAR2024.
-#' @param interest_cell_type_branch_iGRN The output of function get_branch_iGRN.
+#' @param interest_cell_type_iGRN_all_TGTF_pairs The output of function \code{get_iGRN_by_TFBS_pwm_by_JASPAR2024}.
+#' @param interest_cell_type_branch_iGRN The output of function \code{get_branch_iGRN}.
 #'
 #' @returns
 #' A named list where each element corresponds to a cell type and contains:
@@ -42,7 +42,9 @@
 #'
 #' @examples
 #' \dontrun{
-#' interest_cell_type_iGRN_all_TGTF_pairs = base::readRDS("./3 get iGRN/interest_cell_type_iGRN_all_TGTF_pairs.rds")
+#' interest_cell_type_iGRN_all_TGTF_pairs = base::readRDS(
+#'   "./3 get iGRN/interest_cell_type_iGRN_all_TGTF_pairs.rds"
+#' )
 #' interest_cell_type_branch_iGRN = base::readRDS("./3 get iGRN/interest_cell_type_branch_iGRN.rds")
 #' interest_cell_type_iGRN = get_iGRN(
 #'   interest_cell_type_iGRN_all_TGTF_pairs = interest_cell_type_iGRN_all_TGTF_pairs,
@@ -92,6 +94,11 @@ get_iGRN = function(
         }
       }
     }
+    interest_cell_type_iGRN[[cell_type]] = interest_cell_type_iGRN[[cell_type]][
+      base::rowSums(interest_cell_type_iGRN[[cell_type]] != 0) > 0,
+      base::colSums(interest_cell_type_iGRN[[cell_type]] != 0) > 0,
+      drop = FALSE
+    ]
   }
 
   ### End.

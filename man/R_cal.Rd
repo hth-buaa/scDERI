@@ -2,38 +2,45 @@
 % Please edit documentation in R/R_cal.R
 \name{R_cal}
 \alias{R_cal}
-\title{The function R in the evolutionary equations of the paper}
+\title{Calculate Normalized Regulatory Coefficient R}
 \usage{
-R_cal(theta_TF_TG, tao, r1 = 200, r2, r3 = 1, r4 = 1000, r5 = 1)
+R_cal(theta_TF_TG, tau, r1 = 200, r2, r3 = 1, r4 = 1000, r5 = 1)
 }
 \arguments{
-\item{theta_TF_TG}{Numeric (vector). Regulatory strength of transcription factor TF on target gene TG}
+\item{theta_TF_TG}{Numeric vector. Regulatory strength of transcription factor on target gene.}
 
-\item{tao}{Numeric from 0 to 1. Regulatory threshold τ.
-If regulatory strength θ > τ, a regulatory relationship is confirmed (positive sample); o
-therwise, it is considered a negative sample.}
+\item{tau}{Numeric between 0 and 1. Regulatory binarization threshold, also used to scale the linear term.}
 
-\item{r1}{Numeric greater than 0. A hyperparameter. Generally greater than 100. Default is 200.}
+\item{r1}{Positive numeric. Hyperparameter controlling the scaling of the linear term. Generally greater than 100. Default is 200.}
 
-\item{r2}{Numeric greater than 0. A hyperparameter.}
+\item{r2}{Positive numeric. Hyperparameter controlling the overall steepness of the sigmoid saturation term.}
 
-\item{r3}{Numeric greater than 0. A hyperparameter. Default is 1.}
+\item{r3}{Positive numeric. Hyperparameter representing the inflection point position of the sigmoid curve. Default is 1.}
 
-\item{r4}{Numeric greater than 0. A hyperparameter. Generally greater than 100. Default is 1000.}
+\item{r4}{Positive numeric. Hyperparameter controlling the steepness of the second sigmoid segment. Generally greater than 100. Default is 1000.}
 
-\item{r5}{Numeric greater than 0. A hyperparameter. Default is 1.}
+\item{r5}{Positive numeric. Hyperparameter controlling the maximum amplitude of the saturation term. Default is 1.}
 }
 \value{
-Numeric (vector) from 0 to 1. The computation results of function R.
+Numeric vector. Activation regulatory coefficient for scaling regulatory rates in dynamic equations.
+With default parameters and theta in [0, 1], output values range from 0 to 1.
 }
 \description{
-The function R in the evolutionary equations of the paper
+Computes the activation regulatory coefficient used in gene expression dynamic equations.
+Combines a linear term and a double-sigmoid saturation term, and normalizes by the value at theta = 1.
+}
+\details{
+The function follows a two-step calculation:
+\enumerate{
+\item Computes the unnormalized value as the sum of a linear term and a multiplicative double-sigmoid term.
+\item Normalizes by the function value at theta = 1 to ensure consistent scaling.
+}
 }
 \examples{
 \dontrun{
-R = R_cal(
-  theta_TF_TG = c(0.18, 0.23),
-  tao = 0.323,
+R_val <- R_cal(
+  theta_TF_TG = c(0.2, 0.5, 0.8),
+  tau = 0.3,
   r1 = 200,
   r2 = 1,
   r3 = 1,

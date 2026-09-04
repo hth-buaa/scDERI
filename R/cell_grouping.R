@@ -1,68 +1,57 @@
-#' @title Cell grouping based on pseudotime and gene expression/activity
+#' @title Adaptive Cell Grouping Along Pseudotime Trajectories
 #'
-#' @description
-#' This function performs cell grouping along pseudotime trajectories based on gene expression and activity profiles.
-#' It implements an adaptive grouping algorithm that ensures each group contains sufficient cells with non-zero expression/activity values for reliable downstream analysis.
-#' The function uses a logarithmic fitting model to determine optimal group sizes and produces aggregated expression values for each cell group.
+#' @description Performs adaptive cell grouping along pseudotime trajectories for each cell type.
+#' It first fits a logarithmic model to determine the minimum cells per group based on total cell count,
+#' then iteratively adjusts group sizes to ensure all genes have sufficient non-zero expression/activity values in each group.
+#' Returns aggregated gene profiles and pseudotime endpoints for downstream dynamic modeling.
 #'
-#' @param interest_cell_type_genes_pseudotime_info The output of function get_genes_pseudotime_info.
-#' @param points_x_for_fitting_nc_and_nmin
-#' A numeric vector of length 3 requiring all positive integers in strictly increasing order.
-#' X-coordinates (cell counts) for fitting the logarithmic model that determines minimum cells per group.
-#' If points_y_for_fitting_nc_and_nminforms an arithmetic sequence, it is recommended that twice the median value of points_x_for_fitting_nc_and_nmin is less than the sum of its first and last values.
-#' @param points_y_for_fitting_nc_and_nmin
-#' A numeric vector of length 3 requiring all positive integers in strictly increasing order.
-#' Y-coordinates (group counts) for fitting the logarithmic model that determines minimum cells per group.
-#' @param ncores See in ?get_interest_cell_type_data.
+#' @param interest_cell_type_genes_pseudotime_info List. Output from \code{\link{get_genes_pseudotime_info}}.
+#' @param points_x_for_fitting_nc_and_nmin Integer vector of length 3, strictly increasing positive values.
+#'   Total cell counts (x-axis) for fitting the minimum-cells-per-group logarithmic model.
+#' @param points_y_for_fitting_nc_and_nmin Integer vector of length 3, strictly increasing positive values.
+#'   Corresponding minimum cells per group (y-axis) for the logarithmic model. Defaults to \code{c(5, 10, 15)}.
+#' @param ncores Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+#'   Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+#'   set to \code{1} when running on Windows.
 #'
-#' @returns
-#' A nested list structure organized by cell type, where for each cell type contains:
+#' @return Nested list named by cell type, each entry contains:
 #' \itemize{
-#' \item \code{Branches_n_group}: Number of groups in each branch
-#' \item \code{Branches_n_k}: Number of cells in each group for each branch
-#' \item \code{n_min}: Minimum cell threshold used for each branch
-#' \item \code{Branches_T_k}: Pseudotime values for each group
-#' \item \code{Branches_Tslot_k}: Time interval lengths for each group
-#' \item \code{Branches_TFE_T}: Aggregated TF expression values for each group
-#' \item \code{Branches_TGA_T}: Aggregated TG activity values for each group
-#' \item \code{Branches_TGE_T}: Aggregated TG expression values for each group
+#'   \item \code{Branches_n_group}: Integer vector. Number of valid groups per branch; returns 0 if grouping fails.
+#'   \item \code{Branches_n_k}: List of integer vectors. Exact cell count of each group per branch.
+#'   \item \code{n_min}: Numeric vector. Fitted minimum cell threshold per branch.
+#'   \item \code{Branches_T_k}: List of numeric vectors. Pseudotime value at the endpoint of each group.
+#'   \item \code{Branches_Tslot_k}: List of numeric vectors. Length of pseudotime interval for each group.
+#'   \item \code{Branches_TFE_T}: List of data frames. Aggregated mean of non-zero expression values for TFs (genes as rows, groups as columns).
+#'   \item \code{Branches_TGA_T}: List of data frames. Aggregated mean of non-zero activity values for TGs.
+#'   \item \code{Branches_TGE_T}: List of data frames. Aggregated mean of non-zero expression values for TGs.
 #' }
 #'
-#' @details
-#' The function performs the following key operations:
+#' @details For each cell type and branch, the workflow executes as follows:
 #' \enumerate{
-#' \item Validates input parameters to ensure proper model fitting
-#' \item Fits a logarithmic model (y = c*ln(ax+b)) to determine optimal group sizes based on cell counts
-#' \item Implements an adaptive cell grouping algorithm that ensures each group meets minimum non-zero value requirements
-#' \item Calculates pseudotime values and time intervals for each cell group
-#' \item Aggregates gene expression and activity values within each group
-#' \item Returns organized data structures for downstream differential equation analysis
-#' }
-#'
-#' @section Algorithm Details:
-#' The grouping algorithm follows these steps for each branch:
-#' \itemize{
-#' \item Calculate minimum cell threshold using the fitted logarithmic model
-#' \item Iteratively assign cells to groups while ensuring sufficient non-zero values
-#' \item Handle edge cases where remaining cells are insufficient for new groups
-#' \item Calculate mean expression/activity values for each gene in each group
-#' \item Assign pseudotime values and time intervals to each group
+#'   \item Validates input fitting points to ensure they are strictly increasing positive integers.
+#'   \item Fits a logarithmic model \eqn{y = c \cdot \ln(ax + b)} via the three given points, where x = total cells in the branch and y = minimum cells per group. The fitted value is rounded up to obtain \code{n_min}.
+#'   \item Runs adaptive grouping on pseudotime-ordered cells: each group starts with \code{n_min} cells; if any gene in TFE, TGA, or TGE matrix has fewer than \code{n_min} non-zero values, one cell is added incrementally until the constraint is met or remaining cells are exhausted.
+#'   \item Handles edge cases: remaining cells fewer than \code{n_min} are merged into the previous group; if the first group cannot satisfy the constraint, grouping fails and returns 0 groups.
+#'   \item Calculates endpoint pseudotime and interval length for each group.
+#'   \item Computes mean of non-zero expression/activity values per gene per group, and returns aggregated matrices.
 #' }
 #'
 #' @note
-#' Important considerations:
 #' \itemize{
-#' \item The logarithmic fitting parameters are critical hyperparameters that significantly affect grouping results
-#' \item The function validates that input points form a strictly increasing sequence of positive integers
-#' \item Grouping ensures each gene has sufficient non-zero values in each group for reliable analysis
-#' \item The algorithm handles various edge cases including insufficient cells for grouping
+#'   \item The three fitting points directly determine \code{n_min} and thus the number of groups. Lower \code{n_min} produces more groups but increases sparsity risk.
+#'   \item If grouping returns 0 groups or fewer groups than expected, you can lower the y values of fitting points to reduce \code{n_min}, or tune upstream parameters in \code{\link{get_genes_pseudotime_info}} to reduce gene sparsity.
+#'   \item For reliable downstream modeling, 8–15 groups per branch is recommended. Too few groups reduce temporal resolution; too many groups weaken statistical power per group.
+#'   \item The function creates a \code{2.2 Data Processing - Cell Grouping} directory, temporarily switches the working directory, and saves logarithmic model fitting plots per cell type.
+#'   \item Parallel computation relies on \code{\link[parallel]{mclapply}} and is not supported on Windows.
 #' }
 #'
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
+#' interest_cell_type_genes_pseudotime_info = base::readRDS(
+#'   "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+#' )
 #' points_x_for_fitting_nc_and_nmin = c(280, 450, 650)
 #' points_y_for_fitting_nc_and_nmin = c(5, 10, 15)
 #' ncores = parallel::detectCores() - 1 # In Linux.
@@ -73,62 +62,67 @@
 #'   points_y_for_fitting_nc_and_nmin = points_y_for_fitting_nc_and_nmin,
 #'   ncores = ncores
 #' )
-#' base::saveRDS(interest_cell_type_group, file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
+#' base::saveRDS(
+#'   interest_cell_type_group,
+#'   file = "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+#' )
 #' }
 cell_grouping = function(
-    interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-    points_x_for_fitting_nc_and_nmin = points_x_for_fitting_nc_and_nmin,
+    interest_cell_type_genes_pseudotime_info,
+    points_x_for_fitting_nc_and_nmin,
     points_y_for_fitting_nc_and_nmin = c(5, 10, 15),
     ncores = 1
 )
 {
   ### Start.
   t_start = base::Sys.time()
-  message("Run: Grouping cells based on pseudotime points and valid (non-zero) counts of expression and activity values ", t_start, ".")
+  message("Run: Grouping cells based on pseudotime points and valid (non-zero) counts of expression and activity values. Time: ", t_start, ".")
   original_dir = base::getwd()
   new_folder = "2.2 Data Processing - Cell Grouping"
   if (!base::dir.exists(new_folder)) {
     base::dir.create(new_folder, recursive = TRUE)
-    message("Folder already creates: ", new_folder, ".")
+    message("Folder created: ", new_folder, ".")
   } else {message("Folder already exists: ", new_folder, ".")}
   base::setwd(new_folder)
   message("The current working directory has been switched to: ", base::getwd(), ".")
 
-  ### Validating the input paramerters x and y.
-  validate_x <- function(x) {
-    if (!is.numeric(x)) {
-      stop("Error: The position vector of points on the coordinate axes must be a numeric vector. Current type is '", typeof(x), "'.")
-    }
-
-    if (length(x) != 3) {
-      stop("Error: The position vector of points on the coordinate axes must have length 3. Current length is ", length(x), ".")
-    }
-
-    if (any(x < 0)) {
-      stop("Error: The position vector of points on the coordinate axes must contain only positive numbers. Found negative value(s).")
-    }
-
-    if (all(x %% 1 != 0)) {
-      stop("Error: The position vector of points on the coordinate axes must contain only integers (no decimals). Found decimal value(s).")
-    }
-
-    if (!all(diff(x) > 0)) {
-      stop("Error: The position vector of points on the coordinate axes must be strictly increasing. The sequence is not monotonic increasing.")
-    }
-
-    message("Validation passed: x is a valid positive, strictly increasing, 3-dimensional integer numeric vector.")
+  ### Windows compatibility for parallel computing
+  if (.Platform$OS.type == "windows" && ncores > 1) {
+    message("Parallel computing is not supported on Windows. ncores is forced to 1.")
+    ncores = 1
   }
-  message("Validating the input paramerter x.")
-  validate_x(points_x_for_fitting_nc_and_nmin)
-  message("Validating the input paramerter y.")
-  validate_x(points_y_for_fitting_nc_and_nmin)
+
+  ### Validate input parameters
+  validate_points = function(x, name = "x") {
+    if (!base::is.numeric(x)) {
+      base::stop("Parameter '", name, "' must be a numeric vector.")
+    }
+    if (base::length(x) != 3) {
+      base::stop("Parameter '", name, "' must have exactly 3 elements.")
+    }
+    if (base::any(x <= 0)) {
+      base::stop("Parameter '", name, "' must contain only positive values.")
+    }
+    if (base::any(x %% 1 != 0)) {
+      base::stop("Parameter '", name, "' must contain only integers.")
+    }
+    if (!base::all(base::diff(x) > 0)) {
+      base::stop("Parameter '", name, "' must be strictly increasing.")
+    }
+    base::message("Validation passed for parameter '", name, "'.")
+  }
+  message("Validating input parameter points_x_for_fitting_nc_and_nmin.")
+  validate_points(points_x_for_fitting_nc_and_nmin, name = "points_x_for_fitting_nc_and_nmin")
+  message("Validating input parameter points_y_for_fitting_nc_and_nmin.")
+  validate_points(points_y_for_fitting_nc_and_nmin, name = "points_y_for_fitting_nc_and_nmin")
 
   ### Defining a Function for fitting the relationship between total cell count x and minimum cells per group y: y = c*ln(ax+b).
-  ### Parameters a,b,c are set via Undetermined Coefficient Method (Using three points in the first quadrant of a 2D plane: x-axis = cell count, y-axis = cell group count).
-  calculate_n_min = function(n, Branches_n_cell,
+  ### Parameters a,b,c are solved via three fitting points (x-axis = total cells per branch, y-axis = minimum cells per group).
+  calculate_n_min = function(Branches_n_cell,
                              x = c(200, 1200, 2000),
                              y = c(5, 10, 15),
-                             xmax = 5000)
+                             xmax = 5000,
+                             cell_type)
   {
     # Calculating the Minimum Cell Count Per Group Based on Branch Cell Counts
     base::sapply(
@@ -137,6 +131,7 @@ cell_grouping = function(
         points = base::list()
         for (i in 1:3) {points[[i]] = base::data.frame(x = x, y = y)}
         data = base::do.call(rbind, points)
+        # data = base::data.frame(x = x, y = y)
         x1 = data$x[1]
         x2 = data$x[2]
         y1 = data$y[1]
@@ -220,7 +215,7 @@ cell_grouping = function(
             panel.grid.minor = ggplot2::element_blank()
           )
 
-        ggplot2::ggsave("y = ceiling(c*ln(ax+b)).png", width = 6, height = 5, plot = p)
+        ggplot2::ggsave(base::paste0(cell_type, " --- y = ceiling(c*ln(ax+b)).png"), width = 6, height = 5, plot = p)
 
         return(base::ceiling(c * base::log(a * Branches_n_cell[[n]] + b) + 0.01))
       }
@@ -228,28 +223,29 @@ cell_grouping = function(
   }
 
   ### Defining a function for individual cell type processing.
-  cell_grouping_process = function(Branches_n_cell,
+  cell_grouping_process = function(cell_type,
+                                   Branches_n_cell,
                                    Branches_TFE, Branches_TGA, Branches_TGE,
                                    Branches,
                                    calculate_n_min,
                                    points_x_for_fitting_nc_and_nmin, points_y_for_fitting_nc_and_nmin)
   {
     ## Partitioning Branches_n_cell[[i]] cells into Branches_n_group[[i]] groups based on k~ordering.
-    ## Group k contains Branches_n_k[[i]][k] cells, corresponding to cells from number base::sum(Branches_n_k[[i]][1:k]) - Branches_n_k[[i]][k] + 1to number base::sum(Branches_n_k[[i]][1:k])in the k~sequence.
+    ## Group k contains Branches_n_k[[i]][k] cells, corresponding to cells from position sum(Branches_n_k[[i]][1:k]) - Branches_n_k[[i]][k] + 1 to sum(Branches_n_k[[i]][1:k]) in the k~ ordered sequence.
     Branches_n_k = base::list()
     for (i in base::seq_along(Branches)) {
       message("Calculating the minimum cell count per group based on branch cell counts for branch ", i, ".")
       n_min = calculate_n_min(
-        n = i,
         Branches_n_cell = Branches_n_cell,
         x = points_x_for_fitting_nc_and_nmin,
         y = points_y_for_fitting_nc_and_nmin,
-        xmax = base::max(c(5000, base::unlist(Branches_n_cell)))
+        xmax = base::max(c(5000, base::unlist(Branches_n_cell))),
+        cell_type = cell_type
       )
       message("Calculating the cell group counts per group for branch ", i, ".")
       Branches_n_k[[i]] = numeric(base::ceiling(Branches_n_cell[[i]] / n_min[i]))
     }
-    message("Initializing minimum cell count thresholds for all branches: ", n_min, ".")
+    message("Initializing minimum cell count thresholds for all branches: ", paste(n_min, collapse = ","), ".")
     message("Initializing cell group counts for all branches.")
 
     message("Preparing to execute cell grouping algorithm.")
@@ -366,13 +362,13 @@ cell_grouping = function(
     }
     for (i in base::seq_along(Branches)) {
       if (base::length(Branches_n_k[[i]]) != Branches_n_group[[i]]) {
-        stop("Grouping process failed for branch ",i ," with invalid cell group count records.")
+        stop("Grouping process failed for branch ", i, " with invalid cell group count records.")
       }
       if (base::sum(Branches_n_k[[i]]) != Branches_n_cell[[i]]) {
-        stop("Grouping process failed for branch ",i ," because ungrouped cells remain, and the sum of grouped cells is less than the total cell count.")
+        stop("Grouping process failed for branch ", i, " because ungrouped cells remain, and the sum of grouped cells is less than the total cell count.")
       }
       if (Branches_n_r[[i]] != 0) {
-        stop("Grouping process failed for branch ",i ," with ungrouped cells remain.")
+        stop("Grouping process failed for branch ",i , " with ungrouped cells remaining.")
       }
     }
 
@@ -387,7 +383,7 @@ cell_grouping = function(
       Branches_Tslot_k[[i]] = base::diff(c(0, base::as.numeric(Branches_t_k[[i]])))
     }
 
-    ## Setting aggregate expression values TFG^E_k and activity values TG^A_k, TG^E_k for each gene in every cell group.
+    ## Calculate mean of non-zero expression/activity values for each gene within each cell group.
     message("Setting aggregate expression values TFG^E_k and activity values TG^A_k, TG^E_k for each gene in every cell group.")
     # Constructing a function: The values of vector n_k_vector represent the number of elements in each segment of vector gene_value_vector, and compute the mean of each segment.
     calculate_segment_means = function(gene_value_vector, n_k_vector) {
@@ -440,6 +436,7 @@ cell_grouping = function(
     FUN = function(cell_type) {
       message("Preparing for cell grouping across all branches in cell type ", cell_type, ".")
       cell_grouping_process(
+        cell_type = cell_type,
         Branches_n_cell = interest_cell_type_genes_pseudotime_info[[cell_type]][["Branches_n_cell"]],
         Branches_TFE = interest_cell_type_genes_pseudotime_info[[cell_type]][["Branches_TFE"]],
         Branches_TGA = interest_cell_type_genes_pseudotime_info[[cell_type]][["Branches_TGA"]],
@@ -458,8 +455,7 @@ cell_grouping = function(
   base::setwd(original_dir)
   message("The current working directory has been switched to: ", base::getwd(), ".")
   t_end = base::Sys.time()
-  message("Finish: Grouping cells based on pseudotime points and valid (non-zero) counts of expression and activity values ", t_end, ".")
-  message("Running time: ")
-  base::print(t_end - t_start)
+  message("Finish: Grouping cells based on pseudotime points and valid (non-zero) counts of expression and activity values. Time: ", t_end, ".")
+  message("Running time: ", base::format(t_end - t_start))
   return(interest_cell_type_group)
 }

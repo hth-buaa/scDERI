@@ -2,14 +2,14 @@
 % Please edit documentation in R/model_train.R
 \name{model_train}
 \alias{model_train}
-\title{Model Training for Gene Regulatory Networks Prediction}
+\title{Train scDERI Gene Regulatory Network Models}
 \usage{
 model_train(
-  interest_cell_type_branch_training_set = interest_cell_type_branch_training_set,
-  interest_cell_type_branch_init_params = interest_cell_type_branch_init_params,
-  interest_cell_type_group = interest_cell_type_group,
-  interest_cell_type_tao = interest_cell_type_tao,
-  interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
+  interest_cell_type_branch_training_set,
+  interest_cell_type_branch_init_params,
+  interest_cell_type_group,
+  interest_cell_type_tau,
+  interest_cell_type_genes_pseudotime_info,
   max_epochs = 1000,
   early_stop = 10,
   eps_theta = 0.001,
@@ -22,114 +22,109 @@ model_train(
   seed_ga = 123,
   iterations_grad = 30,
   ncores_grad = 1,
-  theta_difference_threshold = 0.1,
-  fit_loss_threshold = 0.1,
   ncores = 1
 )
 }
 \arguments{
-\item{interest_cell_type_branch_training_set}{The output of function select_training_set.}
+\item{interest_cell_type_branch_training_set}{List. Output from \code{\link{select_training_set}},
+containing branch-level training data with expression and activity features.}
 
-\item{interest_cell_type_branch_init_params}{The output of function set_init_params.}
+\item{interest_cell_type_branch_init_params}{List. Output from \code{\link{set_init_params}},
+containing initialized parameters and bounds for each TF-TG pair.}
 
-\item{interest_cell_type_group}{The output of function cell_grouping.}
+\item{interest_cell_type_group}{List. Output from \code{\link{cell_grouping}},
+containing pseudotime interval lengths for each branch.}
 
-\item{interest_cell_type_tao}{The output of function get_cell_type_tao.}
+\item{interest_cell_type_tau}{Named numeric vector. Output from \code{\link{get_cell_type_tau}},
+cell-type-specific binarization thresholds.}
 
-\item{interest_cell_type_genes_pseudotime_info}{The output of function get_genes_pseudotime_info.}
+\item{interest_cell_type_genes_pseudotime_info}{List. Output from \code{\link{get_genes_pseudotime_info}},
+containing cell counts per branch for weighted integration of results.}
 
-\item{max_epochs}{Positive integer. Maximum number of training epochs (iterations). Default is 1000.}
+\item{max_epochs}{Positive integer. Maximum number of training epochs. Defaults to 1000.}
 
-\item{early_stop}{Positive integer. Number of consecutive epochs without significant improvement to trigger early stopping. Default is 10.}
+\item{early_stop}{Positive integer. Integer. Number of consecutive epochs without loss improvement to trigger early stopping. Defaults to 10.}
 
-\item{eps_theta}{Tiny positive numeric. Threshold for early stopping when predicted regulatory strength (theta_p) is close to observed strength (theta_i). Default is 1e-3.}
+\item{eps_theta}{Tiny positive numeric. Convergence threshold for predicted regulatory strength versus observed strength. Defaults to 1e-3.}
 
-\item{eps_loss}{Tiny positive numeric. Threshold for early stopping when loss change becomes negligible. Default is 1e-5.}
+\item{eps_loss}{Tiny positive numeric. Threshold for negligible loss improvement. Defaults to 1e-5.}
 
-\item{popSize_ga}{Positive integer. Population size for the genetic algorithm, see popSize in ?GA::ga. Default is 50.}
+\item{popSize_ga}{Integer. Population size for genetic algorithm. Defaults to 50. See \code{popSize} in \code{\link[GA]{ga}}.}
 
-\item{maxiter_ga}{Positive integer. Maximum number of generations for the genetic algorithm per iteration, see maxiter in ?GA::ga. Default is 150.}
+\item{maxiter_ga}{Positive integer. Maximum generations per genetic algorithm run. Defaults to 150. See \code{maxiter} in \code{\link[GA]{ga}}.}
 
-\item{pcrossover_ga}{Numeric between 0 and 1. Probability of crossover between chromosome pairs in genetic algorithm, see pcrossover in ?GA::ga. Default is 0.9.}
+\item{pcrossover_ga}{Numeric between 0 and 1. Crossover probability for genetic algorithm. Defaults to 0.9. See \code{pcrossover} in \code{\link[GA]{ga}}.}
 
-\item{pmutation_ga}{Numeric between 0 and 1. Probability of mutation in parent chromosomes in genetic algorithm, see more in ?GA::ga. Default is 0.5.}
+\item{pmutation_ga}{Numeric between 0 and 1. Mutation probability for genetic algorithm, between 0 and 1. Defaults to 0.5. See \code{pmutation} in \code{\link[GA]{ga}}.}
 
-\item{parallel_ga}{Logical. Whether to enable parallel computation for the genetic algorithm, see more in ?GA::ga. Default is FALSE.}
+\item{parallel_ga}{Logical. Whether to enable parallel computing within genetic algorithm. Defaults to \code{FALSE}. See \code{parallel} in \code{\link[GA]{ga}}.}
 
-\item{seed_ga}{Integer. Random seed for reproducibility of genetic algorithm results, see more in ?GA::ga. Default is 123.}
+\item{seed_ga}{Integer. Random seed for reproducible genetic algorithm results. Defaults to 123. See \code{seed} in \code{\link[GA]{ga}}.}
 
-\item{iterations_grad}{Positive integer. Number of gradient ascent steps per iteration. Default is 30.}
+\item{iterations_grad}{Positive integer. Number of gradient ascent steps per epoch. Defaults to 30.}
 
-\item{ncores_grad}{Positive integer. Number of cores for parallel gradient computation. Default is 1.}
+\item{ncores_grad}{Positive integer. Number of cores for parallel gradient computation. Defaults to 1.}
 
-\item{theta_difference_threshold}{Positive numeric. Threshold for filtering results based on difference between predicted and observed regulatory strengths. Default is 0.1.}
-
-\item{fit_loss_threshold}{Positive numeric. Threshold for filtering results based on fitting loss. Default is 0.1.}
-
-\item{ncores}{See in ?get_interest_cell_type_data.}
+\item{ncores}{Positive integer. Number of cores for parallel computation via \code{\link[parallel]{mclapply}}.
+Defaults to \code{1}. Parallel processing is only supported on Unix-like systems;
+set to \code{1} when running on Windows.}
 }
 \value{
-A nested list organized by cell type and branch, containing:
+Nested list organized by cell type, each entry contains:
 \itemize{
-\item For each branch: Detailed training results for each regulon, including:
-\itemize{
-\item \code{re}: Regulon name
-\item \code{train_data}: Training data used
-\item \code{Tslot_K}: Psudotime intervals
-\item \code{tao}: Regulatory threshold τ. If regulatory strength θ > τ, a regulatory relationship is confirmed (positive sample); o therwise, it is considered a negative sample.
-\item \code{f_value_train}: Objective function values
-\item \code{params_data_frame}: Parameters of each training set
-\item \code{loss_train}: Training loss history
-\item \code{best_epoch}: Epoch with lowest loss
-\item \code{best_params}: Optimized parameters
-\item \code{best_pred_result_re}: Optimized fit train regution data.
-\item \code{stop_cause}: Reason for training termination
-\item \code{train_time}: Duration of training
-\item \code{train_epoch}: Train epoch
-}
-\item \code{best_pred_result}: Comprehensive dataframe with predictions for all regulons across branches
-\item \code{best_pred_result_filtered}: Filtered version of predictions based on quality thresholds
+\item \code{best_pred_result}: Integrated data frame across all branches, including predicted regulatory strength,
+binarized results, fitting loss, and training metadata.
+\item \code{branch*}: List of detailed training results for each regulon in the corresponding branch,
+including training data, pseudotime intervals, threshold, objective values, parameter trajectories,
+loss history, best epoch, best parameters, best prediction, stop cause, training time, and total epochs.
 }
 }
 \description{
-This function trains prediction models for gene regulatory networks using a hybrid optimization approach combining genetic algorithms and gradient ascent.
-It processes each cell type and branch independently, training individual models for each regulator-target pair (regulon).
-The training incorporates multiple early stopping criteria and parallel processing capabilities for efficient computation.
+Trains gene regulatory network models for each TF-TG pair across cell types and branches
+using a hybrid optimization strategy combining genetic algorithm global search and gradient ascent local refinement.
+Supports multiple early stopping criteria and parallel computing at the regulon level.
 }
 \details{
-The training process follows a hybrid optimization strategy:
+For each cell type and branch, the function independently trains a model for each TF-TG pair:
 \enumerate{
-\item \strong{Initialization}: Parameters are initialized based on \code{interest_cell_type_branch_init_params}
-\item \strong{Genetic Algorithm Phase}: Explores parameter space using GA with specified crossover/mutation probabilities
-\item \strong{Gradient Ascent Phase}: Refines GA solutions using gradient-based optimization
-\item \strong{Early Stopping}: Monitors multiple criteria:
+\item Initializes genetic algorithm population with pre-set parameter values.
+\item Iterates through training epochs with a two-stage hybrid optimization:
 \itemize{
-\item Maximum epochs reached
-\item Overfitting detection (loss increases)
-\item Predicted vs. observed regulatory strength convergence
-\item Insignificant loss improvement
+\item Stage 1: Genetic algorithm for global parameter space exploration, initialized with the optimal solution from the previous epoch.
+\item Stage 2: Gradient ascent for local refinement based on the best GA solution.
 }
-\item \strong{Result Integration}: Combines branch-specific predictions using weighted averaging based on cell counts
-\item \strong{Quality Filtering}: Filters predictions based on accuracy and loss thresholds
+\item Checks early stopping conditions in priority order after each epoch:
+maximum epochs reached, no loss improvement for consecutive epochs, predicted theta converges to observed theta, negligible loss improvement.
+\item Integrates results across all branches: binary regulatory relationships use union logic,
+continuous values are weighted by branch cell counts.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item Using larger pcrossover_ga, pmutation_ga, and maxiter_ga to jump out of the local optimum
-\item Training each regulon independently enables parallel processing across regulons
-\item Early stopping parameters should be adjusted based on dataset size and complexity
-\item Higher crossover/mutation probabilities increase exploration but may slow convergence
-\item Memory requirements scale with the number of regulons and parameter dimensions
+\item The function creates and temporarily switches to the \code{4.2 Build Prediction Model} directory,
+and restores the original working directory on exit.
+\item Each regulon is trained independently, enabling parallel computing at the regulon level via \code{ncores}.
+\item When \code{parallel_ga = TRUE}, an additional serial GA iteration is performed after parallel GA
+to mitigate result instability.
+\item Adjusting population size, maximum iterations and mutation probability can help the algorithm
+escape local optima but will increase runtime.
 }
 }
 \examples{
 \dontrun{
-interest_cell_type_branch_training_set = base::readRDS("./4.1 Build Prediction Model - Select Training Set/interest_cell_type_branch_training_set.rds")
-interest_cell_type_branch_init_params = base::readRDS("./4.2 BUild Prediction Model/interest_cell_type_branch_init_params.rds")
-interest_cell_type_group = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds")
-interest_cell_type_tao = base::readRDS("./3 get iGRN/interest_cell_type_tao.rds")
-interest_cell_type_genes_pseudotime_info = base::readRDS("./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds")
+interest_cell_type_branch_training_set = base::readRDS(
+  "./4.1 Build Prediction Model - Select Training Set/interest_cell_type_branch_training_set.rds"
+)
+interest_cell_type_branch_init_params = base::readRDS(
+  "./4.2 Build Prediction Model/interest_cell_type_branch_init_params.rds"
+)
+interest_cell_type_group = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_group.rds"
+)
+interest_cell_type_tau = base::readRDS("./3 get iGRN/interest_cell_type_tau.rds")
+interest_cell_type_genes_pseudotime_info = base::readRDS(
+  "./2.2 Data Processing - Cell Grouping/interest_cell_type_genes_pseudotime_info.rds"
+)
 
 max_epochs = 50
 early_stop = 5
@@ -145,9 +140,6 @@ seed_ga = 123 # Reproducible
 iterations_grad = 30
 ncores_grad = 1
 
-theta_difference_threshold = 0.1
-fit_loss_threshold = 0.1
-
 ncores = parallel::detectCores() - 1 # in Linux
 # ncores = 1 # in Windows
 
@@ -155,16 +147,26 @@ interest_cell_type_branch_model_train = model_train(
   interest_cell_type_branch_training_set = interest_cell_type_branch_training_set,
   interest_cell_type_branch_init_params = interest_cell_type_branch_init_params,
   interest_cell_type_group = interest_cell_type_group,
-  interest_cell_type_tao = interest_cell_type_tao,
+  interest_cell_type_tau = interest_cell_type_tau,
   interest_cell_type_genes_pseudotime_info = interest_cell_type_genes_pseudotime_info,
-  max_epochs = max_epochs, early_stop = early_stop,
-  popSize_ga = popSize_ga, maxiter_ga = maxiter_ga, pcrossover_ga = pcrossover_ga, pmutation_ga = pmutation_ga, parallel_ga = parallel_ga, seed_ga = 123,
-  iterations_grad = iterations_grad, ncores_grad = ncores_grad,
-  theta_difference_threshold = theta_difference_threshold, fit_loss_threshold = fit_loss_threshold, ncores = ncores
+  max_epochs = max_epochs,
+  early_stop = early_stop,
+  popSize_ga = popSize_ga,
+  maxiter_ga = maxiter_ga,
+  pcrossover_ga = pcrossover_ga,
+  pmutation_ga = pmutation_ga,
+  parallel_ga = parallel_ga,
+  seed_ga = 123,
+  iterations_grad = iterations_grad,
+  ncores_grad = ncores_grad,
+  ncores = ncores
 )
-base::saveRDS(interest_cell_type_branch_model_train, file = "./4.2 BUild Prediction Model/interest_cell_type_branch_model_train.rds")
+base::saveRDS(
+  interest_cell_type_branch_model_train,
+  file = "./4.2 Build Prediction Model/interest_cell_type_branch_model_train.rds"
+)
 }
 }
 \seealso{
-\code{\link[GA]{ga}}, \code{\link[scDEDS]{f_train_cal}}, \code{\link[scDEDS]{loss_cal}}, \code{\link[scDEDS]{theta_p_cal}}
+\code{\link{f_train_cal}}, \code{\link{gradient_ascent_train}}, \code{\link{loss_cal}}, \code{\link{theta_p_cal}}
 }

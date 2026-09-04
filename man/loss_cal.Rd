@@ -2,70 +2,66 @@
 % Please edit documentation in R/loss_cal.R
 \name{loss_cal}
 \alias{loss_cal}
-\title{Calculate Prediction Loss for a Specific TG-TF Pair}
+\title{Calculate Pure Prediction Loss for a Single TF-TG Pair}
 \usage{
 loss_cal(
   data = train_data,
   params = result_gradient$parameters,
   params_names = params_names,
-  tao = tao,
+  tau = tau,
   Tslot_K = Tslot_K
 )
 }
 \arguments{
-\item{data}{Data frame. The dataset containing expression values for one TG-TF pair,
-typically including columns for TFE, TGA, TGE across multiple time points, and the regulatory strength theta_s.
-Typically choose one from three options: training set data, validation set data, or test set data.}
+\item{data}{Data frame. Input data for one TF-TG pair, containing \code{theta_i}
+and time-series columns prefixed with \code{TFE_}, \code{TGA_}, \code{TGE_}.}
 
-\item{params}{See in ?f_train_cal.}
+\item{params}{Numeric vector. Optimized model parameter vector.}
 
-\item{params_names}{See in ?f_train_cal.}
+\item{params_names}{Character vector. Names corresponding to each parameter element.}
 
-\item{tao}{See in ?f_train_cal.}
+\item{tau}{Positive numeric. Regulatory binarization threshold.}
 
-\item{Tslot_K}{See in ?f_train_cal.}
+\item{Tslot_K}{Positive numeric vector. Pseudotime interval lengths.}
 }
 \value{
-A numeric value representing the mean squared prediction error across all time points for the specified TG-TF pair.
-The loss combines prediction errors for the evolutino process of TFE (Transcription Factor Expression), TGA (Target Gene Accessibility), TGE (Target Gene Expression).
+Single numeric value. Weighted mean squared prediction error.
+TFE and TGA errors have a weight of 2, TGE error has a weight of 1.
 Lower values indicate better prediction performance.
 }
 \description{
-This function computes the prediction loss (mean squared error) for a specific target gene-transcription factor (TG-TF) pair using optimized model parameters.
-It evaluates how well the trained model predicts the expression dynamics of TFE, TGA, and TGE across multiple time points.
+Computes weighted mean squared prediction error for a single TF-TG pair
+using optimized model parameters. Contains only prediction error without regularization
+or boundary penalty, for model evaluation purposes.
 }
 \details{
-The function performs the following operations:
+The function calculates pure prediction loss following these steps:
 \enumerate{
-\item Data Extraction: Extracts TFE, TGA, and TGE expression values across time points
-\item Parameter Retrieval: Retrieves all relevant model parameters for the specific TG-TF pair
-\item R Function Applications
-\item Hill Function Applications: Computes multiple Hill functions for different regulatory components
-\item Loss Computation: Calculates mean squared prediction errors across all time points
+\item Extracts TFE, TGA and TGE time-series values from input data.
+\item Computes normalized regulatory coefficient R via \code{\link{R_cal}}.
+\item Computes steady-state and time-step Hill function values via \code{\link{Hill_cal}}.
+\item Computes regulatory efficiency values via \code{\link{S_cal}} for TFE and TGA dynamics.
+\item Calculates weighted squared prediction error for each time step and returns the mean.
 }
-The loss function incorporates weighted squared errors for TFE, TGA, and TGE predictions, with TFE and TGA errors weighted twice as heavily as TGE errors.
 }
 \note{
-Important considerations:
 \itemize{
-\item The function depends on optimized parameters from a previous training process
-\item The TG-TF identifier must follow the specific format for proper parsing
-\item The data parameter must contain the required columns with proper naming conventions
-\item The function is typically used for model evaluation on validation or test data
+\item Differs from \code{\link{f_train_cal}}: this function excludes regularization
+and boundary penalty terms, and is used only for performance evaluation.
+\item Input data must contain columns with prefixes \code{TFE_}, \code{TGA_}, \code{TGE_}
+and a column named \code{theta_i}.
+\item Can be applied to training, validation or test datasets.
 }
 }
 \examples{
 \dontrun{
-# The settings for the other parameters are inside the function scDEDS::model_train.
-print(loss_cal(
+# Evaluate fitting performance on training data
+train_loss <- loss_cal(
   data = train_data,
-  params = result_gradient$parameters,
-  params_names = params_names,
-  tao = tao,
+  params = best_params,
+  params_names = param_names,
+  tau = tau,
   Tslot_K = Tslot_K
-))
+)
 }
-}
-\seealso{
-\code{\link{R_cal}}, \code{\link{Hill_cal}}, \code{\link{S_cal}}
 }

@@ -10,9 +10,9 @@ get_iGRN(
 )
 }
 \arguments{
-\item{interest_cell_type_iGRN_all_TGTF_pairs}{The output of function get_iGRN_by_TFBS_pwm_by_JASPAR2024.}
+\item{interest_cell_type_iGRN_all_TGTF_pairs}{The output of function \code{get_iGRN_by_TFBS_pwm_by_JASPAR2024}.}
 
-\item{interest_cell_type_branch_iGRN}{The output of function get_branch_iGRN.}
+\item{interest_cell_type_branch_iGRN}{The output of function \code{get_branch_iGRN}.}
 }
 \value{
 A named list where each element corresponds to a cell type and contains:
@@ -51,7 +51,9 @@ Important considerations:
 }
 \examples{
 \dontrun{
-interest_cell_type_iGRN_all_TGTF_pairs = base::readRDS("./3 get iGRN/interest_cell_type_iGRN_all_TGTF_pairs.rds")
+interest_cell_type_iGRN_all_TGTF_pairs = base::readRDS(
+  "./3 get iGRN/interest_cell_type_iGRN_all_TGTF_pairs.rds"
+)
 interest_cell_type_branch_iGRN = base::readRDS("./3 get iGRN/interest_cell_type_branch_iGRN.rds")
 interest_cell_type_iGRN = get_iGRN(
   interest_cell_type_iGRN_all_TGTF_pairs = interest_cell_type_iGRN_all_TGTF_pairs,

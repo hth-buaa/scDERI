@@ -2,70 +2,87 @@
 % Please edit documentation in R/f_train_cal.R
 \name{f_train_cal}
 \alias{f_train_cal}
-\title{This function is the minimized objective function in the model trained using the training set data.}
+\title{Calculate Weighted Training Objective Function}
 \usage{
 f_train_cal(
   params,
   params_names = params_names,
   train_data = train_data,
-  tao = tao,
-  Tslot_K = Tslot_K
+  tau = tau,
+  Tslot_K = Tslot_K,
+  params_init = params_init,
+  params_upper = params_upper,
+  params_lower = params_lower
 )
 }
 \arguments{
-\item{params}{Vector. A flattened vector containing all model parameters for a specific branch, with parameter names defined before.}
+\item{params}{Numeric vector. Flattened model parameter vector for a single TF-TG pair.
+Order must match \code{params_names}.}
 
-\item{params_names}{Character vector. Names corresponding to each element in the params vector, used to assign parameters within the function.}
+\item{params_names}{Character vector. Names corresponding to each element in \code{params}.}
 
-\item{train_data}{Data frame. Training dataset containing only one regulatory pair (TF-TG) with columns for theta_i(regulatory strength) and time-series values for TFE, TGA, and TGE features.}
+\item{train_data}{Data frame. Training data for one regulatory pair, containing regulatory strength
+\code{theta_i} and time-series columns prefixed with \code{TFE_}, \code{TGA_}, \code{TGE_}.}
 
-\item{tao}{See in ?R_cal.}
+\item{tau}{Positive numeric. Regulatory binarization threshold, used to calculate regulatory coefficient R.}
 
-\item{Tslot_K}{Numeric vector. Psudotime intervals between consecutive measurements, used in the TGE dynamics calculation.}
+\item{Tslot_K}{Positive numeric vector. Pseudotime interval lengths between consecutive time points,
+used for TGE dynamics calculation.}
+
+\item{params_init}{Numeric vector. Initial parameter values for regularization penalty. Order must match \code{params_names}.}
+
+\item{params_upper}{Numeric vector. Upper bounds of model parameters. Order must match \code{params_names}.}
+
+\item{params_lower}{Numeric vector. Lower bounds of model parameters. Order must match \code{params_names}.}
 }
 \value{
-A numeric value representing the negative weighted objective function (multiplied by -10000 for optimization purposes).
-Lower values indicate better model fit. The objective function combines:
+Single numeric value. Negated and scaled weighted objective function.
+Higher values correspond to lower actual loss and better fitting performance.
+The objective consists of:
 \itemize{
-\item Mean squared prediction errors for TFE, TGA, and TGE values across time points
-\item Variance regularization terms for beta parameters and expression states
-\item Weighting factors that emphasize different components of the model
+\item Weighted mean squared error of TFE, TGA and TGE dynamics (TFE/TGA weight = 2, TGE weight = 1)
+\item L2 regularization for beta coefficients and baseline expression parameters
+\item Boundary barrier penalty for all constrained parameters
 }
 }
 \description{
-Computes the objective function value to be minimized during model training.
-The function evaluates the model fit by calculating weighted prediction errors for gene expression dynamics (TFE, TGA, TGE) and includes regularization terms to prevent overfitting.
-The output is scaled and negated for compatibility with standard minimization algorithms.
+Computes the weighted objective function for scDERI model training, integrating
+prediction error of expression dynamics, L2 regularization and boundary barrier penalty.
+Returns negated and scaled values for compatibility with maximization-based optimizers such as genetic algorithms.
 }
 \details{
-The function performs the following complex operations for each TG-TF pair in the training data:
+For a single TF-TG pair, the function executes the following steps:
 \enumerate{
-\item Parameter Organization: Assigns names to the parameter vector
-\item TG-TF Pair Processing: Extracts and processes each regulator-target pair from training data
-\item Objective Computation: Calculates weighted squared errors between predicted and observed values The mathematical formulation incorporates, where the error terms include squared differences for TFE, TGA, and TGE predictions, and regularization terms include variances of beta parameters and expression states.
+\item Assigns names to the input parameter vector and extracts individual parameters.
+\item Computes normalized regulatory coefficient R via \code{\link{R_cal}}.
+\item Computes steady-state and time-step Hill function values via \code{\link{Hill_cal}}.
+\item Computes regulatory efficiency values via \code{\link{S_cal}} for TFE and TGA dynamics.
+\item Computes weighted squared prediction error for each time step.
+\item Adds regularization terms and boundary barrier penalties.
+\item Negates and scales the result by 10000 for optimizer compatibility.
 }
 }
 \note{
-Important considerations:
 \itemize{
-\item The function returns negative values for compatibility with minimization algorithms
-\item The function is computationally intensive due to multiple nested operations
-\item Regularization terms help prevent overfitting by penalizing parameter variations
-\item The weighting scheme (-10000 times) is designed for optimization stability
+\item The return value is negated because the genetic algorithm performs maximization,
+while the actual loss is minimized.
+\item This function is called repeatedly during optimization and is computationally intensive.
+\item Regularization and boundary penalties improve generalization and keep parameters
+within biologically reasonable ranges.
 }
 }
 \examples{
 \dontrun{
-# The settings for parameters are inside the function scDEDS::f_train_cal_gr, scDEDS::gradient_ascent_train, or scDEDS::gradient_ascent_train model_train.
-f0 = f_train_cal(
-  params,
-  params_names = params_names,
+# Evaluate objective at given parameters
+obj_value <- f_train_cal(
+  params = param_vec,
+  params_names = param_names,
   train_data = train_data,
-  tao = tao,
-  Tslot_K = Tslot_K
+  tau = tau,
+  Tslot_K = Tslot_K,
+  params_init = param_init,
+  params_upper = param_upper,
+  params_lower = param_lower
 )
 }
-}
-\seealso{
-\code{\link{R_cal}}, \code{\link{Hill_cal}}, \code{\link{S_cal}}
 }
