@@ -1,7 +1,8 @@
 #' @title Calculate Weighted Training Objective Function
 #'
 #' @description Computes the weighted objective function for scDERI model training, integrating
-#' prediction error of expression dynamics, L2 regularization and boundary barrier penalty.
+#' prediction error of expression dynamics, L2 regularization of the baseline corrections,
+#' steady-state demand initial-value shrinkage, and logarithmic boundary barrier penalties.
 #' Returns negated and scaled values for compatibility with maximization-based optimizers such as genetic algorithms.
 #'
 #' @param params Numeric vector. Flattened model parameter vector for a single TF-TG pair.
