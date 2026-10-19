@@ -40,14 +40,19 @@ setwd(Working_directory)
 
 
 ### Install core dependency packages.
-# Install igraph 2.0.3 from CRAN archive source.
-install.packages("https://cran.r-project.org/src/contrib/Archive/igraph/igraph_2.0.3.tar.gz", repos = NULL, type = "source")
+# Install igraph 2.0.3 and dplyr 1.1.4 from the CRAN archive.
+if (!requireNamespace("igraph", quietly = TRUE) || packageVersion("igraph") != "2.0.3") {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/igraph/igraph_2.0.3.tar.gz", repos = NULL, type = "source")
+}
 packageVersion("igraph") # Version: 2.0.3
+if (!requireNamespace("dplyr", quietly = TRUE) || packageVersion("dplyr") != "1.1.4") {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/dplyr/dplyr_1.1.4.tar.gz", repos = NULL, type = "source")
+}
+packageVersion("dplyr") # Version: 1.1.4
 
 # Install CRAN packages.
-install.packages(c("dplyr", "ggplot2", "Signac", "SeuratObject", "Seurat", "VGAM", "ggrepel",
-                   "minpack.lm", "data.table", "tibble", "tidyr", "pROC", "DDRTree", "GA", "psych"))
-packageVersion("dplyr") # Version: 1.1.4
+install.packages(c("ggplot2", "Signac", "SeuratObject", "Seurat", "VGAM", "ggrepel", "minpack.lm",
+                   "data.table", "tibble", "tidyr", "pROC", "DDRTree", "GA", "psych"))
 packageVersion("ggplot2") # Version: 4.0.0
 packageVersion("Signac") # Version: 1.15.0
 packageVersion("SeuratObject") # Version: 5.2.0
