@@ -53,7 +53,6 @@ packageVersion("dplyr") # Version: 1.1.4
 # Install CRAN packages.
 install.packages(c("ggplot2", "Signac", "SeuratObject", "Seurat", "VGAM", "ggrepel", "minpack.lm",
                    "data.table", "tibble", "tidyr", "pROC", "DDRTree", "GA", "psych"))
-packageVersion("dplyr") # Version: 1.1.4
 packageVersion("ggplot2") # Version: 4.0.0
 packageVersion("Signac") # Version: 1.15.0
 packageVersion("SeuratObject") # Version: 5.2.0
