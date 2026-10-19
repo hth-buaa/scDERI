@@ -27,16 +27,18 @@ Key features:
 ### Installing dependencies
 
 ```r
-# igraph 2.0.3 must be installed from the CRAN archive
-install.packages(
-  "https://cran.r-project.org/src/contrib/Archive/igraph/igraph_2.0.3.tar.gz",
-  repos = NULL, type = "source"
-)
+# Install igraph 2.0.3 and dplyr 1.1.4 from the CRAN archive.
+if (!requireNamespace("igraph", quietly = TRUE) || packageVersion("igraph") != "2.0.3") {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/igraph/igraph_2.0.3.tar.gz", repos = NULL, type = "source")
+}
+if (!requireNamespace("dplyr", quietly = TRUE) || packageVersion("dplyr") != "1.1.4") {
+  install.packages("https://cran.r-project.org/src/contrib/Archive/dplyr/dplyr_1.1.4.tar.gz", repos = NULL, type = "source")
+}
 
 # CRAN packages
-install.packages(c("dplyr", "ggplot2", "Signac", "SeuratObject", "Seurat", "VGAM",
-                   "ggrepel", "minpack.lm", "data.table", "tibble", "tidyr", "pROC",
-                   "DDRTree", "GA", "psych", "qs", "devtools", "rbioapi", "peakRAM"))
+install.packages(c("ggplot2", "Signac", "SeuratObject", "Seurat", "VGAM", "ggrepel",
+                   "minpack.lm", "data.table", "tibble", "tidyr", "pROC", "DDRTree",
+                   "GA", "psych", "qs", "devtools", "rbioapi", "peakRAM"))
 
 # Bioconductor packages
 if (!require("BiocManager", quietly = TRUE)) install.packages("BiocManager")
